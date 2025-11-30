@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "gdextension_init"
+library = "res://addons/rustgd/bin/rustGD.dll"
+compatibility_minimum = 4.5
+[libraries]
+windows.editor.x86_64 = "res://addons/rustgd/bin/rustGD.dll"
+windows.debug.x86_64 = "res://addons/rustgd/bin/rustGD.dll"
+windows.release.x86_64 = "res://addons/rustgd/bin/rustGD.dll"

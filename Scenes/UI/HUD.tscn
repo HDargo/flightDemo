@@ -1,0 +1,150 @@
+[gd_scene load_steps=2 format=3 uid="uid://hud"]
+
+[ext_resource type="Script" path="res://Scripts/UI/HUD.gd" id="1_script"]
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 200.0
+offset_bottom = 100.0
+
+[node name="SpeedLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Speed: 0"
+
+[node name="ThrottleLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Throttle: 0%"
+
+[node name="AltitudeLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Alt: 0"
+
+[node name="MissileLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Missile: READY"
+
+[node name="Crosshair" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -2.0
+offset_top = -2.0
+offset_right = 2.0
+offset_bottom = 2.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 1, 0, 0.8)
+
+[node name="BattleStatus" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 60.0
+grow_horizontal = 2
+
+[node name="BarBackground" type="ColorRect" parent="BattleStatus"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 15.0
+offset_right = 300.0
+offset_bottom = 30.0
+grow_horizontal = 2
+color = Color(0, 0, 0, 0.5)
+
+[node name="AllyBar" type="ColorRect" parent="BattleStatus/BarBackground"]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 300.0
+grow_vertical = 2
+color = Color(0.2, 0.6, 1, 1)
+
+[node name="EnemyBar" type="ColorRect" parent="BattleStatus/BarBackground"]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -300.0
+grow_horizontal = 0
+grow_vertical = 2
+color = Color(1, 0.2, 0.2, 1)
+
+[node name="AllyCountLabel" type="Label" parent="BattleStatus"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 35.0
+offset_right = -200.0
+offset_bottom = 58.0
+grow_horizontal = 2
+text = "Allies: 0"
+
+[node name="EnemyCountLabel" type="Label" parent="BattleStatus"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = 200.0
+offset_top = 35.0
+offset_right = 300.0
+offset_bottom = 58.0
+grow_horizontal = 2
+text = "Enemies: 0"
+horizontal_alignment = 2
+
+[node name="LockBox" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DamageIndicator" type="Node2D" parent="."]
+position = Vector2(576, 324)
+
+[node name="Arrow" type="Polygon2D" parent="DamageIndicator"]
+visible = false
+color = Color(1, 0, 0, 0.784314)
+polygon = PackedVector2Array(0, -100, -20, -60, 0, -70, 20, -60)
+
+[node name="Box" type="ReferenceRect" parent="LockBox"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0, 0, 1)
+border_width = 2.0
+editor_only = false
+
+

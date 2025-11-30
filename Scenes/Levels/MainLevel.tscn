@@ -1,0 +1,78 @@
+[gd_scene load_steps=13 format=3 uid="uid://mainlevel"]
+
+[ext_resource type="PackedScene" uid="uid://ircraft" path="res://Scenes/Entities/Aircraft.tscn" id="1_aircraft"]
+[ext_resource type="Script" uid="uid://bu2r2aett1fys" path="res://Scripts/Levels/MainLevel.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://groundtarget" path="res://Scenes/Entities/GroundTarget.tscn" id="2_target"]
+[ext_resource type="PackedScene" uid="uid://hud" path="res://Scenes/UI/HUD.tscn" id="3_hud"]
+[ext_resource type="PackedScene" path="res://Scenes/Entities/EnemyAircraft.tscn" id="4_enemy"]
+[ext_resource type="PackedScene" path="res://Scenes/Entities/AllyAircraft.tscn" id="5_ally"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(10000, 1, 10000)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.3, 0.5, 0.3, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+size = Vector2(10000, 10000)
+
+[node name="MainLevel" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="HUD" parent="CanvasLayer" instance=ExtResource("3_hud")]
+
+[node name="Aircraft" parent="." instance=ExtResource("1_aircraft")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)
+team = 1
+
+[node name="Enemy1" parent="." instance=ExtResource("4_enemy")]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 10, -100)
+
+[node name="Enemy2" parent="." instance=ExtResource("4_enemy")]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 20, 20, -100)
+
+[node name="Ally1" parent="." instance=ExtResource("5_ally")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 10, 20)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+shape = SubResource("BoxShape3D_ground")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+material_override = SubResource("StandardMaterial3D_ground")
+mesh = SubResource("PlaneMesh_ground")
+
+[node name="Targets" type="Node3D" parent="."]
+
+[node name="GroundTarget1" parent="Targets" instance=ExtResource("2_target")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -50)
+
+[node name="GroundTarget2" parent="Targets" instance=ExtResource("2_target")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, -50)
+
+[node name="GroundTarget3" parent="Targets" instance=ExtResource("2_target")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, -50)

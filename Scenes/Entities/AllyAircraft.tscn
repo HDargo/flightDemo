@@ -1,0 +1,44 @@
+[gd_scene load_steps=4 format=3 uid="uid://ally_aircraft"]
+
+[ext_resource type="PackedScene" uid="uid://aircraft" path="res://Scenes/Entities/Aircraft.tscn" id="1_base"]
+[ext_resource type="Script" path="res://Scripts/Flight/AIController.gd" id="2_ai"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ally"]
+albedo_color = Color(0, 0.5, 1, 1)
+
+[node name="AllyAircraft" instance=ExtResource("1_base")]
+team = 1
+is_player = false
+
+[node name="Fuselage" parent="." index="1"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="Nose" parent="." index="2"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="Engine" parent="." index="3"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="LeftWingIn" parent="." index="4"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="LeftWingOut" parent="." index="5"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="RightWingIn" parent="." index="6"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="RightWingOut" parent="." index="7"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="HorizontalTail" parent="." index="8"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="VerticalTail" parent="." index="9"]
+surface_material_override/0 = SubResource("StandardMaterial3D_ally")
+
+[node name="CameraRig" parent="." index="10"]
+visible = false
+
+[node name="AIController" type="Node" parent="." index="11"]
+script = ExtResource("2_ai")
