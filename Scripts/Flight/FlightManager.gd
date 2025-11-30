@@ -25,10 +25,13 @@ class ProjectileData:
 	var life: float
 	var damage: float = 10.0
 	var basis: Basis # Cache rotation to avoid recalculating every frame
+	var spawn_time: float # For shader
 
 var _projectile_data: Array[ProjectileData] = []
+var _projectile_pool: Array[ProjectileData] = []
 var _multi_mesh_instance: MultiMeshInstance3D
 var _max_projectiles: int = 10000
+var _shader_material: ShaderMaterial
 
 func _enter_tree() -> void:
 	instance = self
@@ -49,7 +52,8 @@ func _setup_multimesh() -> void:
 	
 	var mm = MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = false
+	mm.use_colors = false # We use custom_data instead
+	mm.use_custom_data = true # Enable custom data for shader
 	mm.instance_count = _max_projectiles
 	mm.visible_instance_count = 0
 	
@@ -58,12 +62,12 @@ func _setup_multimesh() -> void:
 	mesh.radius = 0.05
 	mesh.height = 0.5
 	
-	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(1, 1, 0, 1)
-	mat.emission_enabled = true
-	mat.emission = Color(1, 0.5, 0, 1)
-	mat.emission_energy_multiplier = 2.0
-	mesh.material = mat
+	# Load Shader
+	var shader = load("res://Assets/Shaders/projectile.gdshader")
+	_shader_material = ShaderMaterial.new()
+	_shader_material.shader = shader
+	
+	mesh.material = _shader_material
 	
 	mm.mesh = mesh
 	_multi_mesh_instance.multimesh = mm
@@ -83,6 +87,12 @@ func register_aircraft(a: Node) -> void:
 func unregister_aircraft(a: Node) -> void:
 	if aircrafts.has(a):
 		aircrafts.erase(a)
+	
+	# Clean up cache immediately to avoid stale entries and periodic GC spikes
+	if is_instance_valid(a):
+		var id = a.get_instance_id()
+		if _aircraft_data_map.has(id):
+			_aircraft_data_map.erase(id)
 
 func register_ai(ai: Node) -> void:
 	if not ai_controllers.has(ai):
@@ -96,11 +106,17 @@ func spawn_projectile(tf: Transform3D) -> void:
 	if _projectile_data.size() >= _max_projectiles:
 		return # Limit reached
 		
-	var p = ProjectileData.new()
+	var p: ProjectileData
+	if _projectile_pool.is_empty():
+		p = ProjectileData.new()
+	else:
+		p = _projectile_pool.pop_back()
+		
 	p.position = tf.origin
 	p.velocity = -tf.basis.z * 200.0 # Default speed 200
 	p.life = 2.0 # Default lifetime
 	p.damage = 10.0
+	p.spawn_time = Time.get_ticks_msec() / 1000.0
 	
 	# Pre-calculate rotation basis
 	# Projectiles usually fly straight, so we don't need to look_at every frame
@@ -116,6 +132,19 @@ func spawn_projectile(tf: Transform3D) -> void:
 		p.basis = Basis()
 	
 	_projectile_data.append(p)
+	
+	# Update MultiMesh
+	var idx = _projectile_data.size() - 1
+	var mm = _multi_mesh_instance.multimesh
+	mm.visible_instance_count = _projectile_data.size()
+	
+	# Set Initial Transform (Spawn Position/Rotation)
+	var t = Transform3D(p.basis, p.position)
+	mm.set_instance_transform(idx, t)
+	
+	# Set Custom Data (Velocity + Spawn Time)
+	# RGB = Velocity, A = Spawn Time
+	mm.set_instance_custom_data(idx, Color(p.velocity.x, p.velocity.y, p.velocity.z, p.spawn_time))
 
 func return_projectile(p: Node) -> void:
 	# Deprecated: No longer used with MultiMesh system
@@ -192,9 +221,13 @@ func _physics_process(delta: float) -> void:
 			if is_instance_valid(a):
 				a.apply_physics_movement(delta)
 
-	# 5. Projectile Movement (MultiMesh - Optimized)
+	# 5. Projectile Movement (MultiMesh - Optimized with Shader)
 	var proj_count = _projectile_data.size()
 	if proj_count > 0:
+		# Update Shader Time
+		var current_time = Time.get_ticks_msec() / 1000.0
+		_shader_material.set_shader_parameter("current_time", current_time)
+		
 		var space_state = null
 		if aircrafts.size() > 0 and is_instance_valid(aircrafts[0]):
 			space_state = aircrafts[0].get_world_3d().direct_space_state
@@ -202,56 +235,64 @@ func _physics_process(delta: float) -> void:
 		if space_state:
 			# Use cached query params
 			var query = _query_params
+			var mm = _multi_mesh_instance.multimesh
 			
-			var alive_count = 0
-			# Local reference for potential speedup
-			var p_data = _projectile_data 
-			
-			for i in range(proj_count):
-				var p = p_data[i]
+			# Iterate backwards to allow swap-remove without breaking indices of upcoming items
+			# Actually, standard forward loop with while is better for swap-remove
+			var i = 0
+			while i < _projectile_data.size():
+				var p = _projectile_data[i]
 				
 				p.life -= delta
+				var dead = false
+				
 				if p.life <= 0:
-					continue # Skip dead (Time out)
-				
-				var from = p.position
-				var to = from + p.velocity * delta
-				
-				query.from = from
-				query.to = to
-				
-				var result = space_state.intersect_ray(query)
-				
-				if not result.is_empty():
-					# Hit something
-					if is_instance_valid(result.collider) and result.collider.has_method("take_damage"):
-						# Calculate local hit position
-						var hit_pos_local = result.collider.to_local(result.position)
-						result.collider.take_damage(p.damage, hit_pos_local)
-					
-					# Bullet destroyed on impact
-					continue 
+					dead = true
 				else:
-					p.position = to
+					var from = p.position
+					var to = from + p.velocity * delta
+					
+					query.from = from
+					query.to = to
+					
+					var result = space_state.intersect_ray(query)
+					
+					if not result.is_empty():
+						# Hit something
+						if is_instance_valid(result.collider) and result.collider.has_method("take_damage"):
+							# Calculate local hit position
+							var hit_pos_local = result.collider.to_local(result.position)
+							result.collider.take_damage(p.damage, hit_pos_local)
+						
+						# Bullet destroyed on impact
+						dead = true
+					else:
+						p.position = to
 				
-				# Keep alive: Move to front if needed
-				if alive_count != i:
-					p_data[alive_count] = p
-				alive_count += 1
+				if dead:
+					# Recycle dead object
+					_projectile_pool.append(p)
+					
+					# Swap with last
+					var last_idx = _projectile_data.size() - 1
+					if i != last_idx:
+						# Move last data to current slot
+						_projectile_data[i] = _projectile_data[last_idx]
+						
+						# Move MultiMesh instance data
+						var t = mm.get_instance_transform(last_idx)
+						var c = mm.get_instance_custom_data(last_idx)
+						mm.set_instance_transform(i, t)
+						mm.set_instance_custom_data(i, c)
+					
+					# Remove last
+					_projectile_data.pop_back()
+					# Don't increment i, process this slot again (it has new data)
+				else:
+					i += 1
 			
-			# Resize array to remove dead ones at the end
-			if alive_count < proj_count:
-				p_data.resize(alive_count)
-		
-		# Update MultiMesh
-		var mm = _multi_mesh_instance.multimesh
-		mm.visible_instance_count = _projectile_data.size()
-		
-		for i in range(_projectile_data.size()):
-			var p = _projectile_data[i]
-			# Use pre-calculated basis + current position (Much faster than looking_at every frame)
-			var t = Transform3D(p.basis, p.position)
-			mm.set_instance_transform(i, t)
+			# Update visible count
+			mm.visible_instance_count = _projectile_data.size()
 	else:
 		_multi_mesh_instance.multimesh.visible_instance_count = 0
 
@@ -297,17 +338,7 @@ func _update_cache() -> void:
 			elif data.team == GlobalEnums.Team.ENEMY:
 				_enemies_list.append(data)
 	
-	# Cleanup stale entries (Optional: run this less frequently if needed)
-	if _frame_count % 60 == 0:
-		var current_ids = {} # Use Dictionary for faster lookup than Array.has()
-		for a in aircrafts:
-			if is_instance_valid(a):
-				current_ids[a.get_instance_id()] = true
-				
-		var keys = _aircraft_data_map.keys()
-		for k in keys:
-			if not current_ids.has(k):
-				_aircraft_data_map.erase(k)
+	# Cleanup stale entries removed. Handled in unregister_aircraft.
 
 func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_tasks: int) -> void:
 	var start_idx = int(float(task_idx) * total_items / total_tasks)

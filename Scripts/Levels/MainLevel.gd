@@ -15,6 +15,9 @@ var max_allies_count: int = 0
 var max_enemies_count: int = 0
 
 func _ready() -> void:
+	# Disable accumulated input for lower latency (useful for flight sims/FPS)
+	Input.set_use_accumulated_input(false)
+	
 	# Initialize FlightManager
 	var flight_manager = FlightManager.new()
 	add_child(flight_manager)

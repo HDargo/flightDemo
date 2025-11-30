@@ -142,17 +142,6 @@ func _ready() -> void:
 	elif team == GlobalEnums.Team.ENEMY:
 		add_to_group("enemy")
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not is_player: return
-	
-	if event is InputEventMouseMotion:
-		mouse_input.x = -event.relative.x * mouse_sensitivity
-		mouse_input.y = -event.relative.y * mouse_sensitivity
-	
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
-		var cam = get_node_or_null("CameraRig")
-		if cam:
-			cam.toggle_view()
 
 func _physics_process(delta: float) -> void:
 	if _performance_dirty:
@@ -310,7 +299,15 @@ func process_player_input() -> void:
 	input_pitch = -key_pitch 
 	input_roll = -key_roll
 	
-	mouse_input = Vector2.ZERO
+	# Mouse Input (Accumulated from _unhandled_input)
+	if mouse_input.length_squared() > 0:
+		# Add mouse input to keyboard input
+		# Sensitivity is already applied in _unhandled_input
+		input_pitch += mouse_input.y
+		input_roll += mouse_input.x
+		
+		# Reset accumulator for next frame
+		mouse_input = Vector2.ZERO
 	
 	# Weapons: Space (Guns), F (Missile)
 	input_fire = Input.is_key_pressed(KEY_SPACE)
@@ -327,6 +324,28 @@ func process_player_input() -> void:
 	# Toggle Mouse Capture - REMOVED (Handled by PauseMenu)
 	# if Input.is_action_just_pressed("ui_cancel"): ...
 	pass
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_player: return
+	
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# Accumulate mouse delta
+		# Pitch (Y): Up is negative in screen, but we want Up to pitch up (positive or negative depending on convention)
+		# Usually Pull Back (Mouse Down) -> Pitch Up.
+		# Mouse Down is +Y.
+		# So +Y -> Pitch Up.
+		
+		# Roll (X): Mouse Right -> Roll Right.
+		# Mouse Right is +X.
+		# So +X -> Roll Right.
+		
+		mouse_input.y += event.relative.y * mouse_sensitivity
+		mouse_input.x += event.relative.x * mouse_sensitivity
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
+		var cam = get_node_or_null("CameraRig")
+		if cam:
+			cam.toggle_view()
 
 func take_damage(amount: float, hit_pos_local: Vector3) -> void:
 	if is_player:
