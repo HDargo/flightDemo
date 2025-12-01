@@ -1,83 +1,38 @@
-name: 'Verify Develop'
+name: Build Godot 4 (Windows)
 
 on:
+  push:
+    branches: [ "main" ]
   pull_request:
-    branches: [ 'main' ]
-
-env:
-  GODOT_VERSION: 4.2
-  VERSION_FILE: project.godot
-  VERSION_REGEX: config\/version=\"\K[0-9.\-A-z]*
 
 jobs:
-  check-version-bump:
-    runs-on: ubuntu-latest
+  build-windows:
+    runs-on: windows-latest
+
     steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v3
+      - name: Checkout Godot source
+        uses: actions/checkout@v4
+
+      # Python & SCons 설치
+      - name: Install SCons
+        run: |
+          python -m pip install --upgrade pip
+          pip install scons==4.4.0
+
+      # MSVC 개발 환경 설정 (Godot 4는 MSVC 권장)
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          ref: ${{ github.base_ref }}
+          arch: x64
 
-      - name: Extract old version string
-        uses: CapsCollective/version-actions/extract-version@v1.0
+      # 실제 빌드
+      - name: Build Windows Editor
+        run: |
+          scons platform=windows target=editor vsproj=no production=yes debug_symbols=no -j4
+
+      # 결과물 업로드
+      - name: Upload artifact (Editor)
+        uses: actions/upload-artifact@v4
         with:
-          version-file: ${{ env.VERSION_FILE }}
-          version-regex: ${{ env.VERSION_REGEX }}
-        id: extract-version-old
-
-      - name: Checkout current branch
-        uses: actions/checkout@v3
-
-      - name: Extract new version string
-        uses: CapsCollective/version-actions/extract-version@v1.0
-        with:
-          version-file: ${{ env.VERSION_FILE }}
-          version-regex: ${{ env.VERSION_REGEX }}
-        id: extract-version-new
-
-      - name: Check semantic version bump
-        uses: CapsCollective/version-actions/check-version-bump@v1.0
-        with:
-          new-version: ${{ steps.extract-version-new.outputs.version-string }}
-          old-version: ${{ steps.extract-version-old.outputs.version-string }}
-      
-  run-project-validation:
-    needs: check-version-bump
-    runs-on: macos-latest
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v3
-
-      - name: Install Godot
-        uses: CapsCollective/godot-actions/install-godot@v1.0
-        with:
-          godot-version: ${{ env.GODOT_VERSION }}
-        id: install-godot
-
-      - name: Open Godot editor for reimport
-        run: ${{ steps.install-godot.outputs.godot-executable }} --editor --headless --quit || true
-
-      - name: Run project validations
-        run: ${{ steps.install-godot.outputs.godot-executable }} --script scripts/run_validations.gd --headless
-
-  build:
-    needs: run-project-validation
-    runs-on: macos-latest
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v3
-
-      - name: Install Godot
-        uses: CapsCollective/godot-actions/install-godot@v1.0
-        with:
-          godot-version: ${{ env.GODOT_VERSION }}
-          install-templates: true
-        id: install-godot
-
-      - name: Open Godot editor for reimport
-        run: ${{ steps.install-godot.outputs.godot-executable }} --editor --headless --quit || true
-
-      - name: Build and upload artifacts for all platforms
-        uses: CapsCollective/godot-actions/build-godot@v1.0
-        with:
-          godot-executable: ${{ steps.install-godot.outputs.godot-executable }}
+          name: godot-windows-editor
+          path: bin/godot.windows.editor.x86_64.exe
