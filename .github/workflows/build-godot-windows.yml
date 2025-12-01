@@ -1,40 +1,28 @@
-name: Build Godot Engine 4 (Windows)
+name: Build Godot Project
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  push: {}
+  pull_request: {}
 
 jobs:
-  build-windows:
-    name: Build for Windows
-    runs-on: windows-latest
-
+  Godot:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux, windows, mac]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Python & SCons 설치
-      - name: Install Python & SCons
-        run: |
-          python -m pip install --upgrade pip
-          pip install scons
-
-      # MSVC 빌드 도구 설치
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/checkout@v2
         with:
-          arch: x86_64
-
-      # Godot Windows 빌드
-      - name: Build (target=editor, platform=windows)
-        run: |
-          scons platform=windows target=editor production=yes use_mingw=no -j4
-
-      # 결과 파일 아티팩트 업로드 (.exe)
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          lfs: true
+      - name: Build
+        id: build
+        uses: manleydev/build-godot-action@v1.4.1
         with:
-          name: godot-windows-editor
-          path: bin/godot.windows.editor.x86_64.exe
+          name: example
+          preset: ${{ matrix.platform }}
+          debugMode: "true"
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: Client - ${{ matrix.platform }}
+          path: ${{ github.workspace }}/${{ steps.build.outputs.build }}
