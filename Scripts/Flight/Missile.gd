@@ -16,13 +16,38 @@ var target: Node3D
 var velocity: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
-	# Initial velocity
-	velocity = -transform.basis.z * speed
+	# Initial setup if not pooled
+	if velocity == Vector3.ZERO:
+		velocity = -transform.basis.z * speed
 	
-	await get_tree().create_timer(lifetime).timeout
-	explode()
+	_start_timer()
+
+func reset(tf: Transform3D, new_target: Node3D, initial_speed: float) -> void:
+	global_transform = tf
+	target = new_target
+	speed = initial_speed
+	velocity = -tf.basis.z * speed
+	
+	# Reset physics state if needed
+	set_physics_process(true)
+	show()
+	
+	_start_timer()
+
+func _start_timer() -> void:
+	# Cancel previous timer if any (though SceneTreeTimer can't be cancelled easily, we just ignore it or use a variable)
+	# Better to use a custom timer logic in _process or a node Timer if we want to cancel.
+	# For simplicity, let's use a simple float timer in _process to avoid async issues with pooling.
+	_current_life = 0.0
+
+var _current_life: float = 0.0
 
 func _physics_process(delta: float) -> void:
+	_current_life += delta
+	if _current_life >= lifetime:
+		explode()
+		return
+
 	# Accelerate
 	speed = move_toward(speed, max_speed, acceleration * delta)
 	
@@ -81,4 +106,7 @@ func explode() -> void:
 		get_parent().add_child(explosion)
 		explosion.global_position = global_position
 	
-	queue_free()
+	if FlightManager.instance:
+		FlightManager.instance.return_missile(self)
+	else:
+		queue_free()

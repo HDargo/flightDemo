@@ -457,12 +457,18 @@ func _deferred_fire_missile() -> void:
 	
 	last_missile_time = current_time
 	
-	var missile = missile_scene.instantiate()
-	missile.speed = current_speed + 50.0 # Launch with boost
-	get_parent().add_child(missile)
-	missile.global_transform = global_transform * Transform3D(Basis(), Vector3(0, -1, 0)) # Drop from belly
-	missile.target = locked_target
-	print("Missile fired at ", locked_target.name)
+	if FlightManager.instance:
+		var launch_tf = global_transform * Transform3D(Basis(), Vector3(0, -1, 0)) # Drop from belly
+		FlightManager.instance.spawn_missile(launch_tf, locked_target, current_speed + 50.0)
+		print("Missile fired at ", locked_target.name)
+	else:
+		# Fallback
+		var missile = missile_scene.instantiate()
+		missile.speed = current_speed + 50.0 # Launch with boost
+		get_parent().add_child(missile)
+		missile.global_transform = global_transform * Transform3D(Basis(), Vector3(0, -1, 0)) # Drop from belly
+		missile.target = locked_target
+		print("Missile fired at ", locked_target.name)
 
 var _target_search_timer: float = 0.0
 var _target_search_interval: float = 0.2 # 5 times per second

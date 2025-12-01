@@ -44,8 +44,16 @@ func _ready() -> void:
 	var pause_menu = pause_menu_scene.instantiate()
 	$CanvasLayer.add_child(pause_menu)
 
-func _process(_delta: float) -> void:
+var _hud_update_timer: float = 0.0
+
+func _process(delta: float) -> void:
 	if game_over: return
+	
+	# Optimization: Update HUD only 10 times per second, not every frame
+	_hud_update_timer += delta
+	if _hud_update_timer < 0.1:
+		return
+	_hud_update_timer = 0.0
 	
 	var allies_count = 0
 	var enemies_count = 0

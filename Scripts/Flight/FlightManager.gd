@@ -33,6 +33,10 @@ var _multi_mesh_instance: MultiMeshInstance3D
 var _max_projectiles: int = 10000
 var _shader_material: ShaderMaterial
 
+# Missile Pooling
+var _missile_pool: Array[Node] = []
+var _missile_scene = preload("res://Scenes/Entities/Missile.tscn")
+
 func _enter_tree() -> void:
 	instance = self
 
@@ -150,6 +154,38 @@ func return_projectile(p: Node) -> void:
 	# Deprecated: No longer used with MultiMesh system
 	if is_instance_valid(p):
 		p.queue_free()
+
+func spawn_missile(tf: Transform3D, target: Node3D, initial_speed: float) -> void:
+	var m: Node
+	if _missile_pool.is_empty():
+		m = _missile_scene.instantiate()
+		# Add to scene tree first so _ready is called if new
+		# Assuming FlightManager is in the scene tree, but missiles should probably be in the level
+		# Let's add to the current scene root or a specific container
+		var root = get_tree().current_scene
+		root.add_child(m)
+	else:
+		m = _missile_pool.pop_back()
+		if not is_instance_valid(m):
+			m = _missile_scene.instantiate()
+			var root = get_tree().current_scene
+			root.add_child(m)
+	
+	if m.has_method("reset"):
+		m.reset(tf, target, initial_speed)
+	else:
+		# Fallback for non-pooled or fresh instance if reset not called in _ready
+		m.global_transform = tf
+		m.target = target
+		m.speed = initial_speed
+
+func return_missile(m: Node) -> void:
+	if is_instance_valid(m):
+		m.hide()
+		m.set_physics_process(false)
+		# Move away to avoid collisions while disabled (just in case)
+		m.global_position = Vector3(0, -1000, 0)
+		_missile_pool.append(m)
 
 func get_aircraft_data(node: Node) -> Dictionary:
 	if not is_instance_valid(node): return {}
