@@ -1,38 +1,44 @@
-name: Build Godot 4 (Windows)
+name: Export Godot Game (Windows)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  export-windows:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Godot source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Python & SCons 설치
-      - name: Install SCons
+      # Godot Editor (Headless) 다운로드
+      - name: Download Godot Headless
         run: |
-          python -m pip install --upgrade pip
-          pip install scons==4.4.0
+          wget https://downloads.tuxfamily.org/godotengine/4.2.2/mono/Godot_v4.2.2-stable_mono_linux_x86_64.zip -O godot.zip
+          unzip godot.zip -d godot
+          chmod +x godot/Godot_v4.2.2-stable_mono_linux_x86_64
 
-      # MSVC 개발 환경 설정 (Godot 4는 MSVC 권장)
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      # 실제 빌드
-      - name: Build Windows Editor
+      # Windows Export Templates 다운로드
+      - name: Download Export Templates
         run: |
-          scons platform=windows target=editor vsproj=no production=yes debug_symbols=no -j4
+          wget https://downloads.tuxfamily.org/godotengine/4.2.2/mono/Godot_v4.2.2-stable_mono_export_templates.tpz -O templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable.mono
+          unzip templates.tpz -d ~/.local/share/godot/export_templates/4.2.2.stable.mono
+
+      # Export Windows .exe
+      - name: Export Windows Build
+        run: |
+          mkdir -p build/windows
+          godot/Godot_v4.2.2-stable_mono_linux_x86_64 \
+            --headless \
+            --export-release "Windows Desktop" \
+            build/windows/game.exe
 
       # 결과물 업로드
-      - name: Upload artifact (Editor)
+      - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: godot-windows-editor
-          path: bin/godot.windows.editor.x86_64.exe
+          name: windows-build
+          path: build/windows
