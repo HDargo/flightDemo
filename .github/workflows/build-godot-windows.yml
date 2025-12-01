@@ -13,30 +13,57 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Godot Headless 다운로드 (GitHub Releases)
+      # --- Download Godot 4.5.1 Headless (GitHub Releases)
       - name: Download Godot Headless
         run: |
-          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip -O godot.zip
+          wget https://github.com/godotengine/godot/releases/download/4.5.1-stable/Godot_v4.5.1-stable_linux.x86_64.zip -O godot.zip
           unzip godot.zip -d godot
-          chmod +x godot/Godot_v4.2.2-stable_linux.x86_64
+          chmod +x godot/Godot_v4.5.1-stable_linux.x86_64
 
-      # Windows Export Templates 다운로드 (GitHub Releases)
+      # --- Download Windows Export Templates (GitHub Releases)
       - name: Download Export Templates
         run: |
-          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz -O templates.tpz
-          mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable
-          unzip templates.tpz -d ~/.local/share/godot/export_templates/4.2.2.stable
+          wget https://github.com/godotengine/godot/releases/download/4.5.1-stable/Godot_v4.5.1-stable_export_templates.tpz -O templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.5.1.stable
+          unzip templates.tpz -d ~/.local/share/godot/export_templates/4.5.1.stable
 
-      # Windows .exe 빌드
+      # --- Create export preset automatically
+      - name: Create export presets
+        run: |
+          cat << 'EOF' > export_presets.cfg
+          [preset.0]
+          name="Windows Desktop"
+          platform="Windows Desktop"
+          runnable=true
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_paths= { "release": "build/windows/game.exe" }
+          script_encryption_key=""
+          
+          [preset.0.options]
+          texture_format/bptc=true
+          texture_format/s3tc=true
+          texture_format/etc2=false
+          binary_format/architecture="x86_64"
+          EOF
+
+      # --- Asset import pass (fixes GDExtension import errors)
+      - name: Import assets
+        run: |
+          godot/Godot_v4.5.1-stable_linux.x86_64 --headless --editor --quit
+
+      # --- Perform Windows export
       - name: Export Windows Build
         run: |
           mkdir -p build/windows
-          godot/Godot_v4.2.2-stable_linux.x86_64 \
+          godot/Godot_v4.5.1-stable_linux.x86_64 \
             --headless \
             --export-release "Windows Desktop" \
             build/windows/game.exe
 
-      # 결과물 업로드
+      # --- Upload final result
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
