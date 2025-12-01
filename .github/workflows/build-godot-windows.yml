@@ -13,25 +13,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Godot Editor (Headless) 다운로드
+      # Godot Headless 다운로드 (GitHub Releases)
       - name: Download Godot Headless
         run: |
-          wget https://downloads.tuxfamily.org/godotengine/4.2.2/mono/Godot_v4.2.2-stable_mono_linux_x86_64.zip -O godot.zip
+          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip -O godot.zip
           unzip godot.zip -d godot
-          chmod +x godot/Godot_v4.2.2-stable_mono_linux_x86_64
+          chmod +x godot/Godot_v4.2.2-stable_linux.x86_64
 
-      # Windows Export Templates 다운로드
+      # Windows Export Templates 다운로드 (GitHub Releases)
       - name: Download Export Templates
         run: |
-          wget https://downloads.tuxfamily.org/godotengine/4.2.2/mono/Godot_v4.2.2-stable_mono_export_templates.tpz -O templates.tpz
-          mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable.mono
-          unzip templates.tpz -d ~/.local/share/godot/export_templates/4.2.2.stable.mono
+          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz -O templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable
+          unzip templates.tpz -d ~/.local/share/godot/export_templates/4.2.2.stable
 
-      # Export Windows .exe
+      # Windows .exe 빌드
       - name: Export Windows Build
         run: |
           mkdir -p build/windows
-          godot/Godot_v4.2.2-stable_mono_linux_x86_64 \
+          godot/Godot_v4.2.2-stable_linux.x86_64 \
             --headless \
             --export-release "Windows Desktop" \
             build/windows/game.exe
