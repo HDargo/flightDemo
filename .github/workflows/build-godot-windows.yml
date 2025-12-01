@@ -2,7 +2,7 @@ name: 'Verify Develop'
 
 on:
   pull_request:
-    branches: [ 'develop' ]
+    branches: [ 'main' ]
 
 env:
   GODOT_VERSION: 4.2
