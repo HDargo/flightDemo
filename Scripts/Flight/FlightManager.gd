@@ -432,8 +432,8 @@ func _physics_process(delta: float) -> void:
 			buffer_writer.put_float(m.max_speed); buffer_writer.put_float(m.acceleration); buffer_writer.put_float(m.turn_speed); buffer_writer.put_float(m.lifetime)
 			
 			# State (vec4)
-			# x=state (0=Active), y=has_target, z=delta
-			buffer_writer.put_float(0.0); buffer_writer.put_float(has_target); buffer_writer.put_float(delta); buffer_writer.put_float(0.0)
+			# x=state (0=Active), y=has_target, z=delta, w=proximity_radius
+			buffer_writer.put_float(0.0); buffer_writer.put_float(has_target); buffer_writer.put_float(delta); buffer_writer.put_float(m.proximity_radius)
 
 		var data = buffer_writer.data_array
 		rd.buffer_update(missile_buffer_rid, 0, data.size(), data)

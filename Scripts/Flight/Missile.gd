@@ -9,6 +9,7 @@ class_name Missile
 @export var damage: float = 50.0
 @export var lifetime: float = 10.0
 @export var explosion_radius: float = 10.0
+@export var proximity_radius: float = 5.0 # Distance to trigger proximity fuse
 
 var explosion_scene = preload("res://Scenes/Effects/Explosion.tscn")
 

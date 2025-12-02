@@ -122,13 +122,23 @@ void main() {
     float acceleration = data.params.y;
     float turn_speed = data.params.z;
     bool has_target = data.state_flags.y > 0.5;
+    float proximity_radius = data.state_flags.w;
     
     // 2. Accelerate
     current_speed = move_toward(current_speed, max_speed, acceleration * delta);
     
-    // 3. Homing
+    // 3. Homing & Proximity Fuse
     if (has_target) {
         vec3 to_target = target_pos - position;
+        float dist_sq = dot(to_target, to_target);
+        
+        // Proximity Detonation (Arming delay 0.5s)
+        if (data.target_pos_life.w > 0.5 && dist_sq < proximity_radius * proximity_radius) {
+            data.state_flags.x = 1.0; // Explode
+            missiles[idx] = data;
+            return;
+        }
+        
         basis = rotate_towards(basis, to_target, turn_speed * delta);
     }
     
