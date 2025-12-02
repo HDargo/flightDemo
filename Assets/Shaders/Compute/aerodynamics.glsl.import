@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://bydroktsml57h"
+path="res://.godot/imported/aerodynamics.glsl-688d8f7b322327b226cd681422a5ebaf.res"
+
+[deps]
+
+source_file="res://Assets/Shaders/Compute/aerodynamics.glsl"
+dest_files=["res://.godot/imported/aerodynamics.glsl-688d8f7b322327b226cd681422a5ebaf.res"]
+
+[params]
+

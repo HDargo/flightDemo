@@ -147,121 +147,12 @@ func _physics_process(delta: float) -> void:
 	if _performance_dirty:
 		recalculate_performance_factors()
 		_performance_dirty = false
-		
-	# Legacy support or fallback
-	calculate_forces(delta)
-	apply_physics_movement(delta)
 
-func calculate_forces(delta: float) -> void:
-	# Input processing moved to _process for thread safety
-	
-	var current_time = Time.get_ticks_msec() / 1000.0
-	
-	# Shooting - Optimize: Check timer before deferring to reduce message queue spam
-	if input_fire and (current_time - last_fire_time >= fire_rate):
-		call_deferred("_deferred_shoot")
-	
-	if input_missile and (current_time - last_missile_time >= missile_cooldown):
-		call_deferred("_deferred_fire_missile")
-	
-	# Throttle control
-	if input_throttle_up:
-		throttle = min(throttle + delta, 1.0)
-	elif input_throttle_down:
-		throttle = max(throttle - delta, 0.0)
-	
-	# Cache basis for repeated access
-	var tf_basis = _cached_transform.basis
-	var forward = -tf_basis.z
-	var local_up = tf_basis.y
-	
-	# Damage Effects (Optimized: Use cached factors)
-	# Physics-based Speed Calculation (Thrust - Drag + Gravity)
-	var thrust = throttle * acceleration * _c_engine_factor * 2.0 # Boost thrust to counter drag
-	var drag = current_speed * current_speed * drag_factor
-	
-	# Gravity influence (Diving gains speed, Climbing loses speed)
-	# basis.z points backwards. If diving (nose down), basis.z points up (y > 0).
-	# forward.y is positive when climbing.
-	var gravity_influence = -9.8 * forward.y
-	
-	current_speed += (thrust - drag + gravity_influence) * delta
-	current_speed = max(current_speed, min_speed)
-	
-	# Rotation with Inertia
-	# Pitch (Local X) - affected by horizontal tail
-	var target_pitch = input_pitch * pitch_speed * _c_h_tail_factor
-	
-	# Tail damage instability (Nose heavy / Loss of elevator authority)
-	if _c_h_tail_factor < 0.9:
-		target_pitch -= (1.0 - _c_h_tail_factor) * 1.5
-	
-	current_pitch = move_toward(current_pitch, target_pitch, pitch_acceleration * delta)
-	_pending_rotation.x += current_pitch * delta
-	
-	# Roll (Local Z) - affected by wings
-	var target_roll = input_roll * roll_speed * _c_roll_authority
-	
-	# Add roll bias if wings are uneven
-	target_roll += _c_wing_imbalance * 3.0 # Stronger drift due to lift imbalance
-	
-	current_roll = move_toward(current_roll, target_roll, roll_acceleration * delta)
-	_pending_rotation.z += current_roll * delta
-	
-	# Yaw (Local Y) - affected by vertical tail
-	# If v_tail is damaged, plane might slip
-	if _c_v_tail_factor < 0.8:
-		_pending_rotation.y += (randf() - 0.5) * (1.0 - _c_v_tail_factor) * delta
-	
-	# --- Aerodynamics (에어로다이나믹) ---
-	
-	# 1. Gravity (중력)
-	# Constant downward force
-	_calculation_velocity.y -= 9.8 * delta
-	
-	# 2. Lift (양력)
-	# Lift acts perpendicular to the wings (Local Up).
-	var lift_intensity = (current_speed / max_speed) * 15.0 * _c_lift_factor # Tuned value (Gravity is 9.8)
-	_calculation_velocity += local_up * lift_intensity * delta
-	
-	# 3. Thrust & Drag (추력 및 항력)
-	# We lerp velocity towards the direction the nose is pointing.
-	# This simulates the engine pulling the plane and air resistance stabilizing the path.
-	# The lerp factor acts as "Drag/Grip".
-	var target_velocity = forward * current_speed
-	var inertia_factor = 2.0 
-	_calculation_velocity = _calculation_velocity.lerp(target_velocity, inertia_factor * delta)
+# func calculate_forces(delta: float) -> void:
+# 	# Logic moved to Compute Shader and _process
+# 	pass
 
-func apply_physics_movement(delta: float = 0.016) -> void:
-	velocity = _calculation_velocity
-	
-	# Apply pending rotation from thread
-	if _pending_rotation != Vector3.ZERO:
-		# Optimization: Combine rotations into one Basis operation
-		# Small angle approximation is faster but less accurate. 
-		# For flight sim, accuracy is good, but let's use Basis rotation which is cleaner than 3 calls.
-		var rot_basis = Basis.from_euler(Vector3(_pending_rotation.x, _pending_rotation.y, _pending_rotation.z))
-		# Apply local rotation: global_basis * rot_basis
-		global_transform.basis = global_transform.basis * rot_basis
-		
-		_pending_rotation = Vector3.ZERO
-	
-	# Optimization: Skip move_and_slide for AI high in the air
-	# Only perform full collision check if:
-	# 1. Is Player (Always needs feedback)
-	# 2. Altitude is low (Risk of ground collision)
-	# 3. Very close to player (Optional, for visual accuracy)
-	var is_safe_altitude = global_position.y > 50.0
-	
-	if is_player or not is_safe_altitude:
-		move_and_slide()
-		
-		# Crash / Landing Logic
-		if get_slide_collision_count() > 0:
-			_handle_collision(delta)
-	else:
-		# Simple movement for AI in safe zone
-		global_position += velocity * delta
+
 
 func _handle_collision(_delta: float) -> void:
 	for i in range(get_slide_collision_count()):
@@ -474,6 +365,20 @@ var _target_search_timer: float = 0.0
 var _target_search_interval: float = 0.2 # 5 times per second
 
 func _process(delta: float) -> void:
+	# Logic from calculate_forces
+	var current_time = Time.get_ticks_msec() / 1000.0
+	
+	if input_fire and (current_time - last_fire_time >= fire_rate):
+		call_deferred("_deferred_shoot")
+	
+	if input_missile and (current_time - last_missile_time >= missile_cooldown):
+		call_deferred("_deferred_fire_missile")
+	
+	if input_throttle_up:
+		throttle = min(throttle + delta, 1.0)
+	elif input_throttle_down:
+		throttle = max(throttle - delta, 0.0)
+
 	if is_player:
 		# 1. Process Input on Main Thread (Safe)
 		process_player_input()
