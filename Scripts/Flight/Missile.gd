@@ -35,41 +35,19 @@ func reset(tf: Transform3D, new_target: Node3D, initial_speed: float) -> void:
 	_start_timer()
 
 func _start_timer() -> void:
-	# Cancel previous timer if any (though SceneTreeTimer can't be cancelled easily, we just ignore it or use a variable)
-	# Better to use a custom timer logic in _process or a node Timer if we want to cancel.
-	# For simplicity, let's use a simple float timer in _process to avoid async issues with pooling.
 	_current_life = 0.0
 
 var _current_life: float = 0.0
 
-func _physics_process(delta: float) -> void:
-	_current_life += delta
-	if _current_life >= lifetime:
-		explode()
-		return
+func _physics_process(_delta: float) -> void:
+	# Logic moved to Compute Shader
+	pass
 
-	# Accelerate
-	speed = move_toward(speed, max_speed, acceleration * delta)
-	
-	# Homing
-	if is_instance_valid(target):
-		# Rotate towards target
-		# Calculate rotation axis and angle
-		# Or use look_at with interpolation (simpler)
-		var current_quat = transform.basis.get_rotation_quaternion()
-		var target_transform = transform.looking_at(target.global_position, Vector3.UP)
-		var target_quat = target_transform.basis.get_rotation_quaternion()
-		
-		# Slerp rotation
-		var new_quat = current_quat.slerp(target_quat, turn_speed * delta)
-		transform.basis = Basis(new_quat)
-	
-	# Move with Inertia
-	var target_velocity = -transform.basis.z * speed
-	# Missiles have high thrust but still some inertia
-	velocity = velocity.lerp(target_velocity, 5.0 * delta)
-	
-	position += velocity * delta
+func update_from_compute(tf: Transform3D, vel: Vector3, spd: float, life: float) -> void:
+	global_transform = tf
+	velocity = vel
+	speed = spd
+	_current_life = life
 
 func _on_body_entered(body: Node3D) -> void:
 	if body == self: return

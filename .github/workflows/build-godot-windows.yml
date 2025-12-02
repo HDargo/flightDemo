@@ -24,8 +24,10 @@ jobs:
       - name: Download Export Templates
         run: |
           wget https://github.com/godotengine/godot/releases/download/4.5.1-stable/Godot_v4.5.1-stable_export_templates.tpz -O templates.tpz
+          unzip -q templates.tpz
           mkdir -p ~/.local/share/godot/export_templates/4.5.1.stable
-          unzip templates.tpz -d ~/.local/share/godot/export_templates/4.5.1.stable
+          mv templates/* ~/.local/share/godot/export_templates/4.5.1.stable/
+          rm -rf templates templates.tpz
 
       # --- Create export preset automatically
       - name: Create export presets

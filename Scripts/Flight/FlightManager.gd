@@ -37,7 +37,7 @@ var _shader_material: ShaderMaterial
 var _missile_pool: Array[Node] = []
 var _missile_scene = preload("res://Scenes/Entities/Missile.tscn")
 
-# --- Compute Shader ---
+# --- Compute Shader (Aircraft) ---
 var rd: RenderingDevice
 var shader_rid: RID
 var pipeline: RID
@@ -45,6 +45,15 @@ var buffer_rid: RID
 var uniform_set: RID
 var _buffer_capacity: int = 1024
 var _byte_array: PackedByteArray
+
+# --- Compute Shader (Missile) ---
+var missile_shader_rid: RID
+var missile_pipeline: RID
+var missile_buffer_rid: RID
+var missile_uniform_set: RID
+var _missile_buffer_capacity: int = 256
+var _missile_byte_array: PackedByteArray
+var active_missiles: Array[Node] = []
 
 func _enter_tree() -> void:
 	instance = self
@@ -59,6 +68,7 @@ func _ready() -> void:
 	
 	_setup_multimesh()
 	_setup_compute()
+	_setup_missile_compute()
 
 func _setup_multimesh() -> void:
 	_multi_mesh_instance = MultiMeshInstance3D.new()
@@ -99,7 +109,44 @@ func _setup_compute() -> void:
 	
 	_resize_buffer(_buffer_capacity)
 
+func _setup_missile_compute() -> void:
+	if not rd: return
+	
+	var shader_file = load("res://Assets/Shaders/Compute/missile_physics.glsl")
+	var shader_spirv: RDShaderSPIRV = shader_file.get_spirv()
+	missile_shader_rid = rd.shader_create_from_spirv(shader_spirv)
+	missile_pipeline = rd.compute_pipeline_create(missile_shader_rid)
+	
+	_resize_missile_buffer(_missile_buffer_capacity)
+
+func _resize_missile_buffer(new_capacity: int) -> void:
+	if missile_uniform_set.is_valid():
+		rd.free_rid(missile_uniform_set)
+		
+	if missile_buffer_rid.is_valid():
+		rd.free_rid(missile_buffer_rid)
+	
+	_missile_buffer_capacity = new_capacity
+	# Struct size = 128 bytes (mat4 + 4 vec4s)
+	var size = _missile_buffer_capacity * 128
+	_missile_byte_array = PackedByteArray()
+	_missile_byte_array.resize(size)
+	
+	missile_buffer_rid = rd.storage_buffer_create(size, _missile_byte_array)
+	
+	var uniform = RDUniform.new()
+	uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	uniform.binding = 0
+	uniform.add_id(missile_buffer_rid)
+	
+	missile_uniform_set = rd.uniform_set_create([uniform], missile_shader_rid, 0)
+
+
 func _resize_buffer(new_capacity: int) -> void:
+	# Free old uniform set first as it depends on buffer
+	if uniform_set.is_valid():
+		rd.free_rid(uniform_set)
+		
 	if buffer_rid.is_valid():
 		rd.free_rid(buffer_rid)
 	
@@ -124,11 +171,19 @@ func _exit_tree() -> void:
 		_ai_task_group_id = -1
 	
 	if rd:
-		if buffer_rid.is_valid(): rd.free_rid(buffer_rid)
+		# Free dependents first (UniformSets -> Buffers, Pipelines -> Shaders)
 		if uniform_set.is_valid(): rd.free_rid(uniform_set)
+		if buffer_rid.is_valid(): rd.free_rid(buffer_rid)
 		if pipeline.is_valid(): rd.free_rid(pipeline)
 		if shader_rid.is_valid(): rd.free_rid(shader_rid)
+		
+		if missile_uniform_set.is_valid(): rd.free_rid(missile_uniform_set)
+		if missile_buffer_rid.is_valid(): rd.free_rid(missile_buffer_rid)
+		if missile_pipeline.is_valid(): rd.free_rid(missile_pipeline)
+		if missile_shader_rid.is_valid(): rd.free_rid(missile_shader_rid)
+		
 		rd.free()
+		rd = null # Prevent double free
 		
 	if instance == self:
 		instance = null
@@ -212,6 +267,9 @@ func spawn_missile(tf: Transform3D, target: Node3D, initial_speed: float) -> voi
 		m.global_transform = tf
 		m.target = target
 		m.speed = initial_speed
+	
+	if not active_missiles.has(m):
+		active_missiles.append(m)
 
 func return_missile(m: Node) -> void:
 	if is_instance_valid(m):
@@ -219,6 +277,8 @@ func return_missile(m: Node) -> void:
 		m.set_physics_process(false)
 		m.global_position = Vector3(0, -1000, 0)
 		_missile_pool.append(m)
+		if active_missiles.has(m):
+			active_missiles.erase(m)
 
 func get_aircraft_data(node: Node) -> Dictionary:
 	if not is_instance_valid(node): return {}
@@ -324,14 +384,103 @@ func _physics_process(delta: float) -> void:
 			var vx = reader.get_float(); var vy = reader.get_float(); var vz = reader.get_float(); var new_speed = reader.get_float()
 			var new_pitch = reader.get_float(); var new_roll = reader.get_float()
 			
-			if new_origin.is_finite() and new_basis.x.is_finite() and new_basis.y.is_finite() and new_basis.z.is_finite():
-				a.global_transform = Transform3D(new_basis, new_origin)
+			if new_basis.x.is_finite() and new_basis.y.is_finite() and new_basis.z.is_finite():
+				a.global_basis = new_basis
 				a.velocity = Vector3(vx, vy, vz)
 				a.current_speed = new_speed
 				a.current_pitch = new_pitch
 				a.current_roll = new_roll
 			else:
 				push_warning("Compute shader returned NaN/Inf for aircraft ", a.name)
+
+	# Compute Shader (Missiles)
+	var missile_count = active_missiles.size()
+	if missile_count > 0 and rd:
+		if missile_count > _missile_buffer_capacity:
+			_resize_missile_buffer(missile_count + 64)
+			
+		var buffer_writer = StreamPeerBuffer.new()
+		buffer_writer.data_array = _missile_byte_array
+		
+		for i in range(missile_count):
+			var m = active_missiles[i]
+			if not is_instance_valid(m): continue
+			
+			var tf = m.global_transform
+			var vel = m.velocity
+			var speed = m.speed
+			var target_pos = Vector3.ZERO
+			var has_target = 0.0
+			if is_instance_valid(m.target):
+				target_pos = m.target.global_position
+				has_target = 1.0
+			
+			buffer_writer.seek(i * 128)
+			# Transform (mat4)
+			buffer_writer.put_float(tf.basis.x.x); buffer_writer.put_float(tf.basis.x.y); buffer_writer.put_float(tf.basis.x.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(tf.basis.y.x); buffer_writer.put_float(tf.basis.y.y); buffer_writer.put_float(tf.basis.y.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(tf.basis.z.x); buffer_writer.put_float(tf.basis.z.y); buffer_writer.put_float(tf.basis.z.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(tf.origin.x); buffer_writer.put_float(tf.origin.y); buffer_writer.put_float(tf.origin.z); buffer_writer.put_float(1.0)
+			
+			# Velocity/Speed (vec4)
+			buffer_writer.put_float(vel.x); buffer_writer.put_float(vel.y); buffer_writer.put_float(vel.z); buffer_writer.put_float(speed)
+			
+			# Target/Life (vec4)
+			buffer_writer.put_float(target_pos.x); buffer_writer.put_float(target_pos.y); buffer_writer.put_float(target_pos.z); buffer_writer.put_float(m._current_life)
+			
+			# Params (vec4)
+			buffer_writer.put_float(m.max_speed); buffer_writer.put_float(m.acceleration); buffer_writer.put_float(m.turn_speed); buffer_writer.put_float(m.lifetime)
+			
+			# State (vec4)
+			# x=state (0=Active), y=has_target, z=delta
+			buffer_writer.put_float(0.0); buffer_writer.put_float(has_target); buffer_writer.put_float(delta); buffer_writer.put_float(0.0)
+
+		var data = buffer_writer.data_array
+		rd.buffer_update(missile_buffer_rid, 0, data.size(), data)
+		
+		var compute_list = rd.compute_list_begin()
+		rd.compute_list_bind_compute_pipeline(compute_list, missile_pipeline)
+		rd.compute_list_bind_uniform_set(compute_list, missile_uniform_set, 0)
+		var groups = ceil(missile_count / 64.0)
+		rd.compute_list_dispatch(compute_list, int(groups), 1, 1)
+		rd.compute_list_end()
+		
+		rd.submit()
+		rd.sync()
+		
+		var output_bytes = rd.buffer_get_data(missile_buffer_rid)
+		var reader = StreamPeerBuffer.new()
+		reader.data_array = output_bytes
+		
+		# Iterate backwards to safely remove items
+		for i in range(missile_count - 1, -1, -1):
+			var m = active_missiles[i]
+			if not is_instance_valid(m): continue
+			
+			reader.seek(i * 128)
+			
+			var bx_x = reader.get_float(); var bx_y = reader.get_float(); var bx_z = reader.get_float(); reader.get_float()
+			var by_x = reader.get_float(); var by_y = reader.get_float(); var by_z = reader.get_float(); reader.get_float()
+			var bz_x = reader.get_float(); var bz_y = reader.get_float(); var bz_z = reader.get_float(); reader.get_float()
+			var ox = reader.get_float(); var oy = reader.get_float(); var oz = reader.get_float(); reader.get_float()
+			
+			var vx = reader.get_float(); var vy = reader.get_float(); var vz = reader.get_float(); var new_speed = reader.get_float()
+			
+			reader.get_float(); reader.get_float(); reader.get_float(); var new_life = reader.get_float()
+			reader.get_float(); reader.get_float(); reader.get_float(); reader.get_float()
+			var state = reader.get_float()
+			
+			if state > 0.5:
+				# Explode
+				m.explode()
+			else:
+				var new_basis = Basis(Vector3(bx_x, bx_y, bx_z), Vector3(by_x, by_y, by_z), Vector3(bz_x, bz_y, bz_z))
+				var new_origin = Vector3(ox, oy, oz)
+				
+				if new_origin.is_finite() and new_origin.length_squared() < 1e14:
+					m.update_from_compute(Transform3D(new_basis, new_origin), Vector3(vx, vy, vz), new_speed, new_life)
+				else:
+					push_warning("Missile NaN or Out of Bounds")
 
 	# Projectile Movement
 	var proj_count = _projectile_data.size()

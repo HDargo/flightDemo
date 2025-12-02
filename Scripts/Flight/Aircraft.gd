@@ -123,7 +123,7 @@ func _exit_tree() -> void:
 		FlightManager.instance.unregister_aircraft(self)
 
 func _ready() -> void:
-	set_physics_process(false)
+	# set_physics_process(false) # Enabled for move_and_slide
 	
 	if not FlightManager.instance:
 		await get_tree().process_frame
@@ -147,10 +147,21 @@ func _physics_process(delta: float) -> void:
 	if _performance_dirty:
 		recalculate_performance_factors()
 		_performance_dirty = false
-
-# func calculate_forces(delta: float) -> void:
-# 	# Logic moved to Compute Shader and _process
-# 	pass
+	
+	# Optimization: LOD for Physics (Physics LOD)
+	# Only use expensive move_and_slide when collision is likely (Low altitude) or for Player.
+	# This prevents the "Physics Death Spiral" where lag causes more physics steps, causing more lag.
+	var safe_altitude = 50.0
+	
+	if is_player or global_position.y < safe_altitude:
+		move_and_slide()
+		
+		if get_slide_collision_count() > 0:
+			_handle_collision(delta)
+	else:
+		# Simple movement for AI in safe zone (High altitude)
+		# This is much cheaper than move_and_slide()
+		global_position += velocity * delta
 
 
 
