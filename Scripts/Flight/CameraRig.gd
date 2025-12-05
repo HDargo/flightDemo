@@ -74,6 +74,11 @@ func find_new_target(direction: int, exclude_target: Node3D = null) -> void:
 
 func toggle_view() -> void:
 	is_cockpit_view = !is_cockpit_view
+	
+	# Notify HUD about view change
+	var hud = get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("set_cockpit_view"):
+		hud.set_cockpit_view(is_cockpit_view)
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(target):

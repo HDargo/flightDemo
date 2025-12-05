@@ -31,7 +31,7 @@ script = ExtResource("1_script")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
-[node name="HUD" parent="CanvasLayer" instance=ExtResource("3_hud")]
+[node name="HUD" parent="CanvasLayer" groups=["hud"] instance=ExtResource("3_hud")]
 
 [node name="Aircraft" parent="." instance=ExtResource("1_aircraft")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)

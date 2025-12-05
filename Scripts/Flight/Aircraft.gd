@@ -97,7 +97,6 @@ func recalculate_performance_factors() -> void:
 	_c_wing_imbalance = r_lift - l_lift
 
 # Thread-Safe Accumulators
-var _pending_rotation: Vector3 = Vector3.ZERO # x=pitch, y=yaw, z=roll
 var _cached_transform: Transform3D
 var _calculation_velocity: Vector3
 

@@ -8,6 +8,10 @@ class_name HUD
 @onready var missile_label: Label = $VBoxContainer/MissileLabel
 @onready var lock_box: Control = $LockBox
 @onready var damage_arrow: Polygon2D = $DamageIndicator/Arrow
+@onready var chase_hud: Control = $VBoxContainer
+@onready var cockpit_hud: Control = $CockpitHUD
+
+var is_cockpit_view: bool = false
 
 # Battle Status
 @onready var ally_bar: ColorRect = $BattleStatus/BarBackground/AllyBar
@@ -18,6 +22,10 @@ class_name HUD
 
 var target_aircraft: Aircraft
 var _update_timer: float = 0.0
+
+func _ready() -> void:
+	if cockpit_hud:
+		cockpit_hud.hide_cockpit()
 
 func update_battle_status(allies: int, enemies: int, max_allies: int, max_enemies: int) -> void:
 	ally_count_label.text = "Allies: %d" % allies
@@ -82,8 +90,23 @@ func _process(delta: float) -> void:
 
 func set_aircraft(aircraft: Aircraft) -> void:
 	target_aircraft = aircraft
+	if cockpit_hud:
+		cockpit_hud.set_aircraft(aircraft)
 	if not target_aircraft.is_connected("damage_taken", _on_damage_taken):
 		target_aircraft.connect("damage_taken", _on_damage_taken)
+
+func set_cockpit_view(enabled: bool) -> void:
+	is_cockpit_view = enabled
+	if enabled:
+		chase_hud.hide()
+		lock_box.hide()
+		if cockpit_hud:
+			cockpit_hud.show_cockpit()
+	else:
+		chase_hud.show()
+		lock_box.show()
+		if cockpit_hud:
+			cockpit_hud.hide_cockpit()
 
 func show_game_over(message: String) -> void:
 	var label = Label.new()

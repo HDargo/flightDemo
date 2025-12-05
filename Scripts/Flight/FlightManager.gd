@@ -189,25 +189,22 @@ func _exit_tree() -> void:
 		instance = null
 
 func register_aircraft(a: Node) -> void:
-	if not aircrafts.has(a):
+	if a not in aircrafts:
 		aircrafts.append(a)
 
 func unregister_aircraft(a: Node) -> void:
-	if aircrafts.has(a):
-		aircrafts.erase(a)
+	aircrafts.erase(a)
 	
 	if is_instance_valid(a):
 		var id = a.get_instance_id()
-		if _aircraft_data_map.has(id):
-			_aircraft_data_map.erase(id)
+		_aircraft_data_map.erase(id)
 
 func register_ai(ai: Node) -> void:
-	if not ai_controllers.has(ai):
+	if ai not in ai_controllers:
 		ai_controllers.append(ai)
 
 func unregister_ai(ai: Node) -> void:
-	if ai_controllers.has(ai):
-		ai_controllers.erase(ai)
+	ai_controllers.erase(ai)
 
 func spawn_projectile(tf: Transform3D) -> void:
 	if _projectile_data.size() >= _max_projectiles:
@@ -218,30 +215,27 @@ func spawn_projectile(tf: Transform3D) -> void:
 		p = ProjectileData.new()
 	else:
 		p = _projectile_pool.pop_back()
-		
+	
+	var forward = -tf.basis.z
 	p.position = tf.origin
-	p.velocity = -tf.basis.z * 200.0
+	p.velocity = forward * 200.0
 	p.life = 2.0
 	p.damage = 10.0
 	p.spawn_time = Time.get_ticks_msec() / 1000.0
 	
-	if p.velocity.length_squared() > 0.001:
-		var up = Vector3.UP
-		if abs(up.dot(p.velocity.normalized())) > 0.99:
-			up = Vector3.RIGHT
-		p.basis = Basis.looking_at(p.velocity, up)
-		p.basis = p.basis.rotated(Vector3.RIGHT, -PI/2)
-	else:
-		p.basis = Basis()
+	# Calculate basis for projectile orientation
+	var up = Vector3.UP
+	var forward_dot = abs(forward.y)
+	if forward_dot > 0.99:
+		up = Vector3.RIGHT
+	p.basis = Basis.looking_at(forward, up).rotated(Vector3.RIGHT, -PI/2)
 	
 	_projectile_data.append(p)
 	
-	var idx = _projectile_data.size() - 1
 	var mm = _multi_mesh_instance.multimesh
-	mm.visible_instance_count = _projectile_data.size()
-	
-	var t = Transform3D(p.basis, p.position)
-	mm.set_instance_transform(idx, t)
+	var idx = _projectile_data.size() - 1
+	mm.visible_instance_count = idx + 1
+	mm.set_instance_transform(idx, Transform3D(p.basis, p.position))
 	mm.set_instance_custom_data(idx, Color(p.velocity.x, p.velocity.y, p.velocity.z, p.spawn_time))
 
 func return_projectile(p: Node) -> void:
@@ -302,12 +296,20 @@ func get_enemies_of(team: int) -> Array[Dictionary]:
 func _physics_process(delta: float) -> void:
 	_frame_count += 1
 	
+	# Wait for previous AI tasks
 	if _ai_task_group_id != -1:
 		WorkerThreadPool.wait_for_group_task_completion(_ai_task_group_id)
 		_ai_task_group_id = -1
 	
+	# Early exit if no work to do
+	var aircraft_count = aircrafts.size()
+	if aircraft_count == 0:
+		_multi_mesh_instance.multimesh.visible_instance_count = 0
+		return
+	
 	_update_cache()
 	
+	# Start AI processing (async)
 	var ai_count = ai_controllers.size()
 	if ai_count > 0:
 		var task_count = min(ai_count, _thread_count)
@@ -319,79 +321,87 @@ func _physics_process(delta: float) -> void:
 			"AI Logic"
 		)
 	
-	# Compute Shader Physics
-	var aircraft_count = aircrafts.size()
-	if aircraft_count > 0 and rd:
+	# Compute Shader Physics (Aircraft)
+	if rd:
 		if aircraft_count > _buffer_capacity:
 			_resize_buffer(aircraft_count + 128)
-			
+		
+		# Write input data
 		var buffer_writer = StreamPeerBuffer.new()
 		buffer_writer.data_array = _byte_array
 		
-		for i in range(aircraft_count):
-			var a = aircrafts[i]
+		var offset = 0
+		for a in aircrafts:
 			if not is_instance_valid(a): continue
 			
 			var tf = a.global_transform
+			var basis = tf.basis
+			var origin = tf.origin
 			var vel = a.velocity
-			var speed = a.current_speed
 			
-			buffer_writer.seek(i * 176)
-			buffer_writer.put_float(tf.basis.x.x); buffer_writer.put_float(tf.basis.x.y); buffer_writer.put_float(tf.basis.x.z); buffer_writer.put_float(0.0)
-			buffer_writer.put_float(tf.basis.y.x); buffer_writer.put_float(tf.basis.y.y); buffer_writer.put_float(tf.basis.y.z); buffer_writer.put_float(0.0)
-			buffer_writer.put_float(tf.basis.z.x); buffer_writer.put_float(tf.basis.z.y); buffer_writer.put_float(tf.basis.z.z); buffer_writer.put_float(0.0)
-			buffer_writer.put_float(tf.origin.x); buffer_writer.put_float(tf.origin.y); buffer_writer.put_float(tf.origin.z); buffer_writer.put_float(1.0)
+			buffer_writer.seek(offset)
+			# Transform (64 bytes)
+			buffer_writer.put_float(basis.x.x); buffer_writer.put_float(basis.x.y); buffer_writer.put_float(basis.x.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(basis.y.x); buffer_writer.put_float(basis.y.y); buffer_writer.put_float(basis.y.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(basis.z.x); buffer_writer.put_float(basis.z.y); buffer_writer.put_float(basis.z.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(origin.x); buffer_writer.put_float(origin.y); buffer_writer.put_float(origin.z); buffer_writer.put_float(1.0)
 			
-			buffer_writer.put_float(vel.x); buffer_writer.put_float(vel.y); buffer_writer.put_float(vel.z); buffer_writer.put_float(speed)
+			# State (112 bytes)
+			buffer_writer.put_float(vel.x); buffer_writer.put_float(vel.y); buffer_writer.put_float(vel.z); buffer_writer.put_float(a.current_speed)
 			buffer_writer.put_float(a.current_pitch); buffer_writer.put_float(a.current_roll); buffer_writer.put_float(a.throttle); buffer_writer.put_float(0.0)
 			buffer_writer.put_float(a.input_pitch); buffer_writer.put_float(a.input_roll); buffer_writer.put_float(0.0); buffer_writer.put_float(delta)
 			buffer_writer.put_float(a.max_speed); buffer_writer.put_float(a.min_speed); buffer_writer.put_float(a.acceleration); buffer_writer.put_float(a.drag_factor)
 			buffer_writer.put_float(a.pitch_speed); buffer_writer.put_float(a.roll_speed); buffer_writer.put_float(a.pitch_acceleration); buffer_writer.put_float(a.roll_acceleration)
 			buffer_writer.put_float(a._c_engine_factor); buffer_writer.put_float(a._c_lift_factor); buffer_writer.put_float(a._c_h_tail_factor); buffer_writer.put_float(a._c_roll_authority)
 			buffer_writer.put_float(a._c_wing_imbalance); buffer_writer.put_float(a._c_v_tail_factor); buffer_writer.put_float(0.0); buffer_writer.put_float(0.0)
+			
+			offset += 176
 
-		var data = buffer_writer.data_array
-		rd.buffer_update(buffer_rid, 0, data.size(), data)
+		# Execute compute shader
+		rd.buffer_update(buffer_rid, 0, offset, buffer_writer.data_array)
 		
 		var compute_list = rd.compute_list_begin()
 		rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
 		rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
-		var groups = ceil(aircraft_count / 64.0)
-		rd.compute_list_dispatch(compute_list, int(groups), 1, 1)
+		rd.compute_list_dispatch(compute_list, int(ceil(aircraft_count / 64.0)), 1, 1)
 		rd.compute_list_end()
 		
 		rd.submit()
 		rd.sync()
 		
+		# Read output data
 		var output_bytes = rd.buffer_get_data(buffer_rid)
 		var reader = StreamPeerBuffer.new()
 		reader.data_array = output_bytes
 		
-		for i in range(aircraft_count):
-			var a = aircrafts[i]
-			if not is_instance_valid(a): continue
+		offset = 0
+		for a in aircrafts:
+			if not is_instance_valid(a):
+				offset += 176
+				continue
 			
-			reader.seek(i * 176)
+			reader.seek(offset)
 			
+			# Read transform
 			var bx_x = reader.get_float(); var bx_y = reader.get_float(); var bx_z = reader.get_float(); reader.get_float()
 			var by_x = reader.get_float(); var by_y = reader.get_float(); var by_z = reader.get_float(); reader.get_float()
 			var bz_x = reader.get_float(); var bz_y = reader.get_float(); var bz_z = reader.get_float(); reader.get_float()
-			var ox = reader.get_float(); var oy = reader.get_float(); var oz = reader.get_float(); reader.get_float()
+			reader.get_float(); reader.get_float(); reader.get_float(); reader.get_float()
 			
-			var new_basis = Basis(Vector3(bx_x, bx_y, bx_z), Vector3(by_x, by_y, by_z), Vector3(bz_x, bz_y, bz_z))
-			var new_origin = Vector3(ox, oy, oz)
-			
+			# Read state
 			var vx = reader.get_float(); var vy = reader.get_float(); var vz = reader.get_float(); var new_speed = reader.get_float()
 			var new_pitch = reader.get_float(); var new_roll = reader.get_float()
 			
-			if new_basis.x.is_finite() and new_basis.y.is_finite() and new_basis.z.is_finite():
-				a.global_basis = new_basis
+			# Validate and apply
+			var new_basis_x = Vector3(bx_x, bx_y, bx_z)
+			if new_basis_x.is_finite():
+				a.global_basis = Basis(new_basis_x, Vector3(by_x, by_y, by_z), Vector3(bz_x, bz_y, bz_z))
 				a.velocity = Vector3(vx, vy, vz)
 				a.current_speed = new_speed
 				a.current_pitch = new_pitch
 				a.current_roll = new_roll
-			else:
-				push_warning("Compute shader returned NaN/Inf for aircraft ", a.name)
+			
+			offset += 176
 
 	# Compute Shader (Missiles)
 	var missile_count = active_missiles.size()
@@ -402,41 +412,36 @@ func _physics_process(delta: float) -> void:
 		var buffer_writer = StreamPeerBuffer.new()
 		buffer_writer.data_array = _missile_byte_array
 		
-		for i in range(missile_count):
-			var m = active_missiles[i]
+		var m_offset = 0
+		for m in active_missiles:
 			if not is_instance_valid(m): continue
 			
 			var tf = m.global_transform
+			var basis = tf.basis
+			var origin = tf.origin
 			var vel = m.velocity
-			var speed = m.speed
 			var target_pos = Vector3.ZERO
 			var has_target = 0.0
 			if is_instance_valid(m.target):
 				target_pos = m.target.global_position
 				has_target = 1.0
 			
-			buffer_writer.seek(i * 128)
-			# Transform (mat4)
-			buffer_writer.put_float(tf.basis.x.x); buffer_writer.put_float(tf.basis.x.y); buffer_writer.put_float(tf.basis.x.z); buffer_writer.put_float(0.0)
-			buffer_writer.put_float(tf.basis.y.x); buffer_writer.put_float(tf.basis.y.y); buffer_writer.put_float(tf.basis.y.z); buffer_writer.put_float(0.0)
-			buffer_writer.put_float(tf.basis.z.x); buffer_writer.put_float(tf.basis.z.y); buffer_writer.put_float(tf.basis.z.z); buffer_writer.put_float(0.0)
-			buffer_writer.put_float(tf.origin.x); buffer_writer.put_float(tf.origin.y); buffer_writer.put_float(tf.origin.z); buffer_writer.put_float(1.0)
+			buffer_writer.seek(m_offset)
+			# Transform (64 bytes)
+			buffer_writer.put_float(basis.x.x); buffer_writer.put_float(basis.x.y); buffer_writer.put_float(basis.x.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(basis.y.x); buffer_writer.put_float(basis.y.y); buffer_writer.put_float(basis.y.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(basis.z.x); buffer_writer.put_float(basis.z.y); buffer_writer.put_float(basis.z.z); buffer_writer.put_float(0.0)
+			buffer_writer.put_float(origin.x); buffer_writer.put_float(origin.y); buffer_writer.put_float(origin.z); buffer_writer.put_float(1.0)
 			
-			# Velocity/Speed (vec4)
-			buffer_writer.put_float(vel.x); buffer_writer.put_float(vel.y); buffer_writer.put_float(vel.z); buffer_writer.put_float(speed)
-			
-			# Target/Life (vec4)
+			# State (64 bytes)
+			buffer_writer.put_float(vel.x); buffer_writer.put_float(vel.y); buffer_writer.put_float(vel.z); buffer_writer.put_float(m.speed)
 			buffer_writer.put_float(target_pos.x); buffer_writer.put_float(target_pos.y); buffer_writer.put_float(target_pos.z); buffer_writer.put_float(m._current_life)
-			
-			# Params (vec4)
 			buffer_writer.put_float(m.max_speed); buffer_writer.put_float(m.acceleration); buffer_writer.put_float(m.turn_speed); buffer_writer.put_float(m.lifetime)
-			
-			# State (vec4)
-			# x=state (0=Active), y=has_target, z=delta, w=proximity_radius
 			buffer_writer.put_float(0.0); buffer_writer.put_float(has_target); buffer_writer.put_float(delta); buffer_writer.put_float(m.proximity_radius)
+			
+			m_offset += 128
 
-		var data = buffer_writer.data_array
-		rd.buffer_update(missile_buffer_rid, 0, data.size(), data)
+		rd.buffer_update(missile_buffer_rid, 0, m_offset, buffer_writer.data_array)
 		
 		var compute_list = rd.compute_list_begin()
 		rd.compute_list_bind_compute_pipeline(compute_list, missile_pipeline)
@@ -453,128 +458,142 @@ func _physics_process(delta: float) -> void:
 		reader.data_array = output_bytes
 		
 		# Iterate backwards to safely remove items
+		m_offset = 0
 		for i in range(missile_count - 1, -1, -1):
 			var m = active_missiles[i]
-			if not is_instance_valid(m): continue
+			if not is_instance_valid(m):
+				m_offset += 128
+				continue
 			
-			reader.seek(i * 128)
+			reader.seek(m_offset)
 			
+			# Read transform
 			var bx_x = reader.get_float(); var bx_y = reader.get_float(); var bx_z = reader.get_float(); reader.get_float()
 			var by_x = reader.get_float(); var by_y = reader.get_float(); var by_z = reader.get_float(); reader.get_float()
 			var bz_x = reader.get_float(); var bz_y = reader.get_float(); var bz_z = reader.get_float(); reader.get_float()
 			var ox = reader.get_float(); var oy = reader.get_float(); var oz = reader.get_float(); reader.get_float()
 			
+			# Read state
 			var vx = reader.get_float(); var vy = reader.get_float(); var vz = reader.get_float(); var new_speed = reader.get_float()
-			
 			reader.get_float(); reader.get_float(); reader.get_float(); var new_life = reader.get_float()
 			reader.get_float(); reader.get_float(); reader.get_float(); reader.get_float()
 			var state = reader.get_float()
 			
 			if state > 0.5:
-				# Explode
 				m.explode()
 			else:
-				var new_basis = Basis(Vector3(bx_x, bx_y, bx_z), Vector3(by_x, by_y, by_z), Vector3(bz_x, bz_y, bz_z))
 				var new_origin = Vector3(ox, oy, oz)
-				
 				if new_origin.is_finite() and new_origin.length_squared() < 1e14:
+					var new_basis = Basis(Vector3(bx_x, bx_y, bx_z), Vector3(by_x, by_y, by_z), Vector3(bz_x, bz_y, bz_z))
 					m.update_from_compute(Transform3D(new_basis, new_origin), Vector3(vx, vy, vz), new_speed, new_life)
-				else:
-					push_warning("Missile NaN or Out of Bounds")
+			
+			m_offset += 128
 
 	# Projectile Movement
 	var proj_count = _projectile_data.size()
-	if proj_count > 0:
-		var current_time = Time.get_ticks_msec() / 1000.0
-		_shader_material.set_shader_parameter("current_time", current_time)
-		
-		var space_state = null
-		if aircrafts.size() > 0 and is_instance_valid(aircrafts[0]):
-			space_state = aircrafts[0].get_world_3d().direct_space_state
-		
-		if space_state:
-			var query = _query_params
-			var mm = _multi_mesh_instance.multimesh
-			
-			var i = 0
-			while i < _projectile_data.size():
-				var p = _projectile_data[i]
-				p.life -= delta
-				var dead = false
-				
-				if p.life <= 0:
-					dead = true
-				else:
-					var from = p.position
-					var to = from + p.velocity * delta
-					query.from = from
-					query.to = to
-					var result = space_state.intersect_ray(query)
-					if not result.is_empty():
-						if is_instance_valid(result.collider) and result.collider.has_method("take_damage"):
-							var hit_pos_local = result.collider.to_local(result.position)
-							result.collider.take_damage(p.damage, hit_pos_local)
-						dead = true
-					else:
-						p.position = to
-				
-				if dead:
-					_projectile_pool.append(p)
-					var last_idx = _projectile_data.size() - 1
-					if i != last_idx:
-						_projectile_data[i] = _projectile_data[last_idx]
-						var t = mm.get_instance_transform(last_idx)
-						var c = mm.get_instance_custom_data(last_idx)
-						mm.set_instance_transform(i, t)
-						mm.set_instance_custom_data(i, c)
-					_projectile_data.pop_back()
-				else:
-					i += 1
-			mm.visible_instance_count = _projectile_data.size()
-	else:
+	if proj_count == 0:
 		_multi_mesh_instance.multimesh.visible_instance_count = 0
+		return
+	
+	var current_time = Time.get_ticks_msec() / 1000.0
+	_shader_material.set_shader_parameter("current_time", current_time)
+	
+	var space_state = aircrafts[0].get_world_3d().direct_space_state if aircraft_count > 0 and is_instance_valid(aircrafts[0]) else null
+	if not space_state:
+		return
+	
+	var query = _query_params
+	var mm = _multi_mesh_instance.multimesh
+	var i = 0
+	
+	while i < _projectile_data.size():
+		var p = _projectile_data[i]
+		p.life -= delta
+		
+		if p.life <= 0:
+			# Dead - recycle
+			_projectile_pool.append(p)
+			var last_idx = _projectile_data.size() - 1
+			if i != last_idx:
+				_projectile_data[i] = _projectile_data[last_idx]
+				mm.set_instance_transform(i, mm.get_instance_transform(last_idx))
+				mm.set_instance_custom_data(i, mm.get_instance_custom_data(last_idx))
+			_projectile_data.pop_back()
+		else:
+			# Ray cast
+			var from = p.position
+			var movement = p.velocity * delta
+			query.from = from
+			query.to = from + movement
+			var result = space_state.intersect_ray(query)
+			
+			if not result.is_empty():
+				# Hit something
+				var collider = result.collider
+				if is_instance_valid(collider) and collider.has_method("take_damage"):
+					collider.take_damage(p.damage, collider.to_local(result.position))
+				# Recycle
+				_projectile_pool.append(p)
+				var last_idx = _projectile_data.size() - 1
+				if i != last_idx:
+					_projectile_data[i] = _projectile_data[last_idx]
+					mm.set_instance_transform(i, mm.get_instance_transform(last_idx))
+					mm.set_instance_custom_data(i, mm.get_instance_custom_data(last_idx))
+				_projectile_data.pop_back()
+			else:
+				# Still alive - update position
+				p.position += movement
+				i += 1
+	
+	mm.visible_instance_count = _projectile_data.size()
 
 func _update_cache() -> void:
 	_allies_list.clear()
 	_enemies_list.clear()
 	
 	for a in aircrafts:
-		if is_instance_valid(a):
-			var tf = a.global_transform
-			a.prepare_for_threads_with_transform(tf)
+		if not is_instance_valid(a):
+			continue
 			
-			var id = a.get_instance_id()
-			var data: Dictionary
-			if _aircraft_data_map.has(id):
-				data = _aircraft_data_map[id]
-				data["pos"] = tf.origin
-				data["transform"] = tf
-				data["vel"] = a.velocity
-				data["team"] = a.team 
-			else:
-				data = {
-					"ref": a,
-					"id": id,
-					"pos": tf.origin,
-					"transform": tf,
-					"team": a.team,
-					"vel": a.velocity
-				}
-				_aircraft_data_map[id] = data
-			
-			if data.team == GlobalEnums.Team.ALLY:
-				_allies_list.append(data)
-			elif data.team == GlobalEnums.Team.ENEMY:
-				_enemies_list.append(data)
+		var tf = a.global_transform
+		a.prepare_for_threads_with_transform(tf)
+		
+		var id = a.get_instance_id()
+		var data = _aircraft_data_map.get(id)
+		
+		if data:
+			# Update existing data
+			data.pos = tf.origin
+			data.transform = tf
+			data.vel = a.velocity
+			data.team = a.team
+		else:
+			# Create new data
+			data = {
+				"ref": a,
+				"id": id,
+				"pos": tf.origin,
+				"transform": tf,
+				"team": a.team,
+				"vel": a.velocity
+			}
+			_aircraft_data_map[id] = data
+		
+		var team = data.team
+		if team == GlobalEnums.Team.ALLY:
+			_allies_list.append(data)
+		elif team == GlobalEnums.Team.ENEMY:
+			_enemies_list.append(data)
 
 func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_tasks: int) -> void:
-	var start_idx = int(float(task_idx) * total_items / total_tasks)
-	var end_idx = int(float(task_idx + 1) * total_items / total_tasks)
+	var start_idx = int(float(task_idx * total_items) / total_tasks)
+	var end_idx = int(float((task_idx + 1) * total_items) / total_tasks)
+	var scaled_delta = delta * 4.0
 	
-	for i in range(start_idx, end_idx):
-		if (i + _frame_count) % 4 != 0:
+	for i in range(start_idx, min(end_idx, total_items)):
+		if (i + _frame_count) & 3 != 0:  # Bitwise AND is faster than modulo
 			continue
 
 		var ai = ai_controllers[i]
 		if is_instance_valid(ai):
-			ai.process_ai(delta * 4.0)
+			ai.process_ai(scaled_delta)

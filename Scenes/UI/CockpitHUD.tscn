@@ -1,0 +1,391 @@
+[gd_scene load_steps=2 format=3 uid="uid://cockpit_hud"]
+
+[ext_resource type="Script" path="res://Scripts/UI/CockpitHUD.gd" id="1_cockpit"]
+
+[node name="CockpitHUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_cockpit")
+
+[node name="CockpitFrame" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopPanel" type="Panel" parent="CockpitFrame"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 80.0
+grow_horizontal = 2
+
+[node name="BottomPanel" type="Panel" parent="CockpitFrame"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -80.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="LeftPanel" type="Panel" parent="CockpitFrame"]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 80.0
+grow_vertical = 2
+
+[node name="RightPanel" type="Panel" parent="CockpitFrame"]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -80.0
+grow_horizontal = 0
+grow_vertical = 2
+
+[node name="Instruments" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="SpeedDisplay" type="Label" parent="Instruments"]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 100.0
+offset_top = -50.0
+offset_right = 200.0
+offset_bottom = 50.0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 32
+text = "0
+KTS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="AltitudeDisplay" type="Label" parent="Instruments"]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -50.0
+offset_right = -100.0
+offset_bottom = 50.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 32
+text = "0
+FT"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HeadingDisplay" type="Label" parent="Instruments"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -50.0
+offset_top = 100.0
+offset_right = 50.0
+offset_bottom = 150.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 36
+text = "000°"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ThrottleBar" type="ProgressBar" parent="Instruments"]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 30.0
+offset_top = -150.0
+offset_right = 60.0
+offset_bottom = 150.0
+grow_vertical = 2
+max_value = 100.0
+value = 50.0
+fill_mode = 3
+show_percentage = false
+
+[node name="ThrottleLabel" type="Label" parent="Instruments"]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 20.0
+offset_top = 160.0
+offset_right = 80.0
+offset_bottom = 180.0
+grow_vertical = 2
+text = "THR"
+horizontal_alignment = 1
+
+[node name="ArtificialHorizon" type="Control" parent="Instruments"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -280.0
+offset_right = 120.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+clip_contents = true
+
+[node name="HorizonContainer" type="Control" parent="Instruments/ArtificialHorizon"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Sky" type="ColorRect" parent="Instruments/ArtificialHorizon/HorizonContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -300.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.2, 0.5, 0.8, 1)
+
+[node name="Ground" type="ColorRect" parent="Instruments/ArtificialHorizon/HorizonContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 150.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.4, 0.3, 0.2, 1)
+
+[node name="HorizonLine" type="ColorRect" parent="Instruments/ArtificialHorizon/HorizonContainer"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 149.0
+offset_bottom = 151.0
+grow_horizontal = 2
+color = Color(1, 1, 1, 1)
+
+[node name="PitchLadder" type="Control" parent="Instruments/ArtificialHorizon/HorizonContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CenterDot" type="ColorRect" parent="Instruments/ArtificialHorizon"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -3.0
+offset_top = -3.0
+offset_right = 3.0
+offset_bottom = 3.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 1, 0, 1)
+
+[node name="Crosshair" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -50.0
+offset_top = -100.0
+offset_right = 50.0
+offset_bottom = 0.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Center" type="ColorRect" parent="Crosshair"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -2.0
+offset_top = -2.0
+offset_right = 2.0
+offset_bottom = 2.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 1, 0, 1)
+
+[node name="Top" type="ColorRect" parent="Crosshair"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -1.0
+offset_right = 1.0
+offset_bottom = 20.0
+grow_horizontal = 2
+color = Color(0, 1, 0, 1)
+
+[node name="Bottom" type="ColorRect" parent="Crosshair"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -1.0
+offset_top = -20.0
+offset_right = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+color = Color(0, 1, 0, 1)
+
+[node name="Left" type="ColorRect" parent="Crosshair"]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_top = -1.0
+offset_right = 20.0
+offset_bottom = 1.0
+grow_vertical = 2
+color = Color(0, 1, 0, 1)
+
+[node name="Right" type="ColorRect" parent="Crosshair"]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -1.0
+offset_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 2
+color = Color(0, 1, 0, 1)
+
+[node name="WeaponStatus" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -150.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+
+[node name="MissileStatus" type="Label" parent="WeaponStatus"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "MISSILE: READY"
+
+[node name="LockIndicator" type="Panel" parent="."]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 0
+offset_right = 80.0
+offset_bottom = 80.0
+
+[node name="TopLeft" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_right = 20.0
+offset_bottom = 2.0
+color = Color(1, 0, 0, 1)
+
+[node name="TopLeft2" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_right = 2.0
+offset_bottom = 20.0
+color = Color(1, 0, 0, 1)
+
+[node name="TopRight" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 60.0
+offset_right = 80.0
+offset_bottom = 2.0
+color = Color(1, 0, 0, 1)
+
+[node name="TopRight2" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 78.0
+offset_right = 80.0
+offset_bottom = 20.0
+color = Color(1, 0, 0, 1)
+
+[node name="BottomLeft" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_top = 78.0
+offset_right = 20.0
+offset_bottom = 80.0
+color = Color(1, 0, 0, 1)
+
+[node name="BottomLeft2" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_top = 60.0
+offset_right = 2.0
+offset_bottom = 80.0
+color = Color(1, 0, 0, 1)
+
+[node name="BottomRight" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 60.0
+offset_top = 78.0
+offset_right = 80.0
+offset_bottom = 80.0
+color = Color(1, 0, 0, 1)
+
+[node name="BottomRight2" type="ColorRect" parent="LockIndicator"]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 78.0
+offset_top = 60.0
+offset_right = 80.0
+offset_bottom = 80.0
+color = Color(1, 0, 0, 1)
