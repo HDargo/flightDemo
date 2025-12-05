@@ -192,18 +192,17 @@ func _handle_collision(_delta: float) -> void:
 			die()
 
 func process_player_input() -> void:
-	# Keyboard overrides or adds to mouse
-	var key_pitch = Input.get_axis("ui_up", "ui_down") 
-	var key_roll = Input.get_axis("ui_left", "ui_right")
+	# Get input from new input actions (supports keyboard, joystick, mouse)
+	var pitch_input = Input.get_axis("flight_pitch_up", "flight_pitch_down")
+	var roll_input = Input.get_axis("flight_roll_left", "flight_roll_right")
 	
-	# Invert keys for Arcade-style control (Up=Up, Right=Right)
-	# Removed mouse input for steering to unify controls to keyboard
-	input_pitch = -key_pitch 
-	input_roll = -key_roll
+	# Apply pitch and roll (inverted for correct feel)
+	input_pitch = -pitch_input
+	input_roll = -roll_input
 	
 	# Mouse Input (Accumulated from _unhandled_input)
 	if mouse_input.length_squared() > 0:
-		# Add mouse input to keyboard input
+		# Add mouse input to keyboard/joystick input
 		# Sensitivity is already applied in _unhandled_input
 		input_pitch += mouse_input.y
 		input_roll += mouse_input.x
@@ -211,21 +210,13 @@ func process_player_input() -> void:
 		# Reset accumulator for next frame
 		mouse_input = Vector2.ZERO
 	
-	# Weapons: Space (Guns), F (Missile)
-	input_fire = Input.is_key_pressed(KEY_SPACE)
-	input_missile = Input.is_key_pressed(KEY_F)
+	# Weapons
+	input_fire = Input.is_action_pressed("flight_fire_gun")
+	input_missile = Input.is_action_pressed("flight_fire_missile")
 	
-	# Throttle: Shift (Up), Ctrl (Down)
-	# Note: You might need to map these in Project Settings -> Input Map if not using default UI actions.
-	# For now, let's use physical keys if possible or standard UI actions if they map well.
-	# ui_accept is usually Space/Enter. ui_cancel is Esc.
-	# Let's use specific keys for better sim feel.
-	input_throttle_up = Input.is_key_pressed(KEY_SHIFT)
-	input_throttle_down = Input.is_key_pressed(KEY_CTRL)
-	
-	# Toggle Mouse Capture - REMOVED (Handled by PauseMenu)
-	# if Input.is_action_just_pressed("ui_cancel"): ...
-	pass
+	# Throttle
+	input_throttle_up = Input.is_action_pressed("flight_throttle_up")
+	input_throttle_down = Input.is_action_pressed("flight_throttle_down")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_player: return
