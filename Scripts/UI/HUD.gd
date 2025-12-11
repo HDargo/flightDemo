@@ -108,19 +108,35 @@ func set_cockpit_view(enabled: bool) -> void:
 		if cockpit_hud:
 			cockpit_hud.hide_cockpit()
 
+var _game_over_label: Label = null
+
 func show_game_over(message: String) -> void:
+	if _game_over_label:
+		_game_over_label.text = message
+		_game_over_label.visible = true
+		return
+	
 	var label = Label.new()
 	label.text = message
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 48)
-	label.add_theme_color_override("font_color", Color.RED if "DEFEAT" in message else Color.GREEN)
+	
+	# Color based on message content
+	if "Loading" in message or "loading" in message:
+		label.add_theme_color_override("font_color", Color.WHITE)
+	elif "DEFEAT" in message:
+		label.add_theme_color_override("font_color", Color.RED)
+	else:
+		label.add_theme_color_override("font_color", Color.GREEN)
 	
 	add_child(label)
 	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	
-	# Optional: Restart button?
-	# For now just message.
+	_game_over_label = label
+
+func hide_game_over() -> void:
+	if _game_over_label:
+		_game_over_label.visible = false
 
 func _on_damage_taken(direction: Vector3) -> void:
 	# Direction is in local space of the aircraft

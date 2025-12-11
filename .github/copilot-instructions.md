@@ -46,3 +46,4 @@ Purpose: Guide AI agents in developing a 3D Flight Simulation game (War Thunder 
 - `HUD` displays speed/throttle.
 - `GroundTarget` implemented with health system.
 
+필요시 mcp context7을 사용.

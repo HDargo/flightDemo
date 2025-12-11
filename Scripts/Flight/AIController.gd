@@ -13,11 +13,12 @@ var state: int = GlobalEnums.AIState.IDLE
 # Optimization: Cache IDs to avoid redundant object checks
 var my_id: int = -1
 var target_id: int = -1
+var my_aircraft_index: int = -1  # Cache aircraft index to avoid find()
 
 var evade_timer: float = 0.0
 var evade_roll_dir: float = 1.0
 var target_search_timer: float = 0.0
-var target_search_interval: float = 1.0
+var target_search_interval: float = 2.0  # Increased from 1.0 for better performance
 
 func _enter_tree() -> void:
 	if FlightManager.instance:
@@ -41,8 +42,13 @@ func _ready() -> void:
 	
 	my_id = aircraft.get_instance_id()
 	
-	# Wait for scene to load
-	await get_tree().create_timer(1.0).timeout
+	# Cache aircraft index for fast lookup
+	if FlightManager.instance:
+		my_aircraft_index = FlightManager.instance.aircrafts.find(aircraft)
+	
+	# Randomize initialization delay to spread out CPU load (0-3 seconds)
+	var initialization_delay = randf_range(0.0, 3.0)
+	await get_tree().create_timer(initialization_delay).timeout
 	
 	# Randomize initial search timer to spread out CPU load
 	target_search_timer = randf_range(0.0, 1.0)
