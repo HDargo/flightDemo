@@ -141,4 +141,3 @@ func explode() -> void:
 		FlightManager.instance.return_missile(self)
 	else:
 		queue_free()
-

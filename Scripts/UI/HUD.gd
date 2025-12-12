@@ -10,8 +10,11 @@ class_name HUD
 @onready var damage_arrow: Polygon2D = $DamageIndicator/Arrow
 @onready var chase_hud: Control = $VBoxContainer
 @onready var cockpit_hud: Control = $CockpitHUD
+@onready var warning_label: Label = null  # Will be created if needed
 
 var is_cockpit_view: bool = false
+var _warning_timer: float = 0.0
+var _warning_visible: bool = false
 
 # Battle Status
 @onready var ally_bar: ColorRect = $BattleStatus/BarBackground/AllyBar
@@ -26,6 +29,29 @@ var _update_timer: float = 0.0
 func _ready() -> void:
 	if cockpit_hud:
 		cockpit_hud.hide_cockpit()
+	
+	# Create warning label if it doesn't exist
+	if not has_node("WarningLabel"):
+		warning_label = Label.new()
+		warning_label.name = "WarningLabel"
+		warning_label.add_theme_font_size_override("font_size", 48)
+		warning_label.add_theme_color_override("font_color", Color.RED)
+		warning_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		warning_label.add_theme_constant_override("outline_size", 4)
+		warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		warning_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		warning_label.anchor_left = 0.5
+		warning_label.anchor_right = 0.5
+		warning_label.anchor_top = 0.3
+		warning_label.anchor_bottom = 0.3
+		warning_label.offset_left = -300
+		warning_label.offset_right = 300
+		warning_label.offset_top = -30
+		warning_label.offset_bottom = 30
+		warning_label.visible = false
+		add_child(warning_label)
+	else:
+		warning_label = get_node("WarningLabel")
 
 func update_battle_status(allies: int, enemies: int, max_allies: int, max_enemies: int) -> void:
 	ally_count_label.text = "Allies: %d" % allies
@@ -53,7 +79,26 @@ func _process(delta: float) -> void:
 		throttle_label.text = "Throttle: 0%"
 		altitude_label.text = "Alt: 0.0"
 		missile_label.text = ""
+		if warning_label:
+			warning_label.visible = false
 		return
+
+	# Warning message for wing destruction
+	if warning_label and target_aircraft._wing_destroyed:
+		if not _warning_visible:
+			_warning_visible = true
+			warning_label.text = "!!! WING DESTROYED !!!\nCRITICAL DAMAGE - LOSS OF CONTROL"
+			warning_label.visible = true
+		
+		# Flashing effect
+		_warning_timer += delta
+		if _warning_timer >= 0.5:
+			_warning_timer = 0.0
+			warning_label.visible = not warning_label.visible
+	elif _warning_visible:
+		_warning_visible = false
+		if warning_label:
+			warning_label.visible = false
 
 	# Update Text Labels (Throttled to 10 FPS)
 	_update_timer += delta

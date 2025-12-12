@@ -38,42 +38,8 @@ var _shader_material: ShaderMaterial
 var _missile_pool: Array[Node] = []
 var _missile_scene = preload("res://Scenes/Entities/Missile.tscn")
 
-# --- Compute Shader (Aircraft) ---
-var rd: RenderingDevice
-var shader_rid: RID
-var pipeline: RID
-
-# Double buffering for async compute
-var buffer_rid_write: RID  # Current frame write
-var buffer_rid_read: RID   # Previous frame read
-var uniform_set_write: RID
-var uniform_set_read: RID
-
-var _buffer_capacity: int = 1024
-var _byte_array_write: PackedByteArray
-var _byte_array_read: PackedByteArray
-var _buffer_writer: StreamPeerBuffer  # Reuse buffer writer
-var _buffer_reader: StreamPeerBuffer  # Reuse buffer reader
-var _aircraft_positions: PackedVector3Array = PackedVector3Array()  # Thread-safe position cache
-var _compute_submitted: bool = false  # Track if compute was submitted
-
-# --- Compute Shader (Missile) ---
-var missile_shader_rid: RID
-var missile_pipeline: RID
-
-# Double buffering for missile async compute
-var missile_buffer_rid_write: RID
-var missile_buffer_rid_read: RID
-var missile_uniform_set_write: RID
-var missile_uniform_set_read: RID
-
-var _missile_buffer_capacity: int = 256
-var _missile_byte_array_write: PackedByteArray
-var _missile_byte_array_read: PackedByteArray
-var _missile_buffer_writer: StreamPeerBuffer
-var _missile_buffer_reader: StreamPeerBuffer
-var _missile_compute_submitted: bool = false
-var active_missiles: Array[Node] = []
+# Thread-safe position cache for AI distance checks
+var _aircraft_positions: PackedVector3Array = PackedVector3Array()
 
 func _enter_tree() -> void:
 	instance = self
@@ -87,33 +53,6 @@ func _ready() -> void:
 	_query_params.collide_with_bodies = true
 	
 	_setup_multimesh()
-	_setup_compute()
-	_setup_missile_compute()
-	_warmup_compute_shaders()
-
-func _warmup_compute_shaders() -> void:
-	if not rd:
-		return
-	
-	# Warm up aircraft shader
-	if pipeline.is_valid() and uniform_set_write.is_valid():
-		var compute_list = rd.compute_list_begin()
-		rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
-		rd.compute_list_bind_uniform_set(compute_list, uniform_set_write, 0)
-		rd.compute_list_dispatch(compute_list, 1, 1, 1)
-		rd.compute_list_end()
-		rd.submit()
-		rd.sync()  # Force compilation now
-	
-	# Warm up missile shader
-	if missile_pipeline.is_valid() and missile_uniform_set_write.is_valid():
-		var compute_list = rd.compute_list_begin()
-		rd.compute_list_bind_compute_pipeline(compute_list, missile_pipeline)
-		rd.compute_list_bind_uniform_set(compute_list, missile_uniform_set_write, 0)
-		rd.compute_list_dispatch(compute_list, 1, 1, 1)
-		rd.compute_list_end()
-		rd.submit()
-		rd.sync()  # Force compilation now
 
 func _setup_multimesh() -> void:
 	_multi_mesh_instance = MultiMeshInstance3D.new()
@@ -141,130 +80,10 @@ func _setup_multimesh() -> void:
 	mm.mesh = mesh
 	_multi_mesh_instance.multimesh = mm
 
-func _setup_compute() -> void:
-	rd = RenderingServer.create_local_rendering_device()
-	if not rd:
-		push_error("Failed to create RenderingDevice")
-		return
-		
-	var shader_file = load("res://Assets/Shaders/Compute/aerodynamics.glsl")
-	var shader_spirv: RDShaderSPIRV = shader_file.get_spirv()
-	shader_rid = rd.shader_create_from_spirv(shader_spirv)
-	pipeline = rd.compute_pipeline_create(shader_rid)
-	
-	# Pre-allocate buffer for expected aircraft count (avoid runtime reallocation)
-	_resize_buffer(512)  # Adjust based on expected max aircraft
-
-func _setup_missile_compute() -> void:
-	if not rd: return
-	
-	var shader_file = load("res://Assets/Shaders/Compute/missile_physics.glsl")
-	var shader_spirv: RDShaderSPIRV = shader_file.get_spirv()
-	missile_shader_rid = rd.shader_create_from_spirv(shader_spirv)
-	missile_pipeline = rd.compute_pipeline_create(missile_shader_rid)
-	
-	# Pre-allocate buffer for expected missile count
-	_resize_missile_buffer(128)
-
-func _resize_missile_buffer(new_capacity: int) -> void:
-	if missile_uniform_set_write.is_valid():
-		rd.free_rid(missile_uniform_set_write)
-	if missile_uniform_set_read.is_valid():
-		rd.free_rid(missile_uniform_set_read)
-	if missile_buffer_rid_write.is_valid():
-		rd.free_rid(missile_buffer_rid_write)
-	if missile_buffer_rid_read.is_valid():
-		rd.free_rid(missile_buffer_rid_read)
-	
-	_missile_buffer_capacity = new_capacity
-	# Struct size = 128 bytes (mat4 + 4 vec4s)
-	var size = _missile_buffer_capacity * 128
-	
-	# Create write buffer
-	_missile_byte_array_write = PackedByteArray()
-	_missile_byte_array_write.resize(size)
-	missile_buffer_rid_write = rd.storage_buffer_create(size, _missile_byte_array_write)
-	
-	# Create read buffer
-	_missile_byte_array_read = PackedByteArray()
-	_missile_byte_array_read.resize(size)
-	missile_buffer_rid_read = rd.storage_buffer_create(size, _missile_byte_array_read)
-	
-	# Create uniform sets
-	var uniform_write = RDUniform.new()
-	uniform_write.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	uniform_write.binding = 0
-	uniform_write.add_id(missile_buffer_rid_write)
-	missile_uniform_set_write = rd.uniform_set_create([uniform_write], missile_shader_rid, 0)
-	
-	var uniform_read = RDUniform.new()
-	uniform_read.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	uniform_read.binding = 0
-	uniform_read.add_id(missile_buffer_rid_read)
-	missile_uniform_set_read = rd.uniform_set_create([uniform_read], missile_shader_rid, 0)
-
-
-func _resize_buffer(new_capacity: int) -> void:
-	# Free old uniform sets and buffers
-	if uniform_set_write.is_valid():
-		rd.free_rid(uniform_set_write)
-	if uniform_set_read.is_valid():
-		rd.free_rid(uniform_set_read)
-	if buffer_rid_write.is_valid():
-		rd.free_rid(buffer_rid_write)
-	if buffer_rid_read.is_valid():
-		rd.free_rid(buffer_rid_read)
-	
-	_buffer_capacity = new_capacity
-	# Struct size = 176 bytes (mat4 + 7 vec4s)
-	var size = _buffer_capacity * 176
-	
-	# Create write buffer
-	_byte_array_write = PackedByteArray()
-	_byte_array_write.resize(size)
-	buffer_rid_write = rd.storage_buffer_create(size, _byte_array_write)
-	
-	# Create read buffer
-	_byte_array_read = PackedByteArray()
-	_byte_array_read.resize(size)
-	buffer_rid_read = rd.storage_buffer_create(size, _byte_array_read)
-	
-	# Create uniform sets
-	var uniform_write = RDUniform.new()
-	uniform_write.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	uniform_write.binding = 0
-	uniform_write.add_id(buffer_rid_write)
-	uniform_set_write = rd.uniform_set_create([uniform_write], shader_rid, 0)
-	
-	var uniform_read = RDUniform.new()
-	uniform_read.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	uniform_read.binding = 0
-	uniform_read.add_id(buffer_rid_read)
-	uniform_set_read = rd.uniform_set_create([uniform_read], shader_rid, 0)
-
 func _exit_tree() -> void:
 	if _ai_task_group_id != -1:
 		WorkerThreadPool.wait_for_group_task_completion(_ai_task_group_id)
 		_ai_task_group_id = -1
-	
-	if rd:
-		# Free dependents first (UniformSets -> Buffers, Pipelines -> Shaders)
-		if uniform_set_write.is_valid(): rd.free_rid(uniform_set_write)
-		if uniform_set_read.is_valid(): rd.free_rid(uniform_set_read)
-		if buffer_rid_write.is_valid(): rd.free_rid(buffer_rid_write)
-		if buffer_rid_read.is_valid(): rd.free_rid(buffer_rid_read)
-		if pipeline.is_valid(): rd.free_rid(pipeline)
-		if shader_rid.is_valid(): rd.free_rid(shader_rid)
-		
-		if missile_uniform_set_write.is_valid(): rd.free_rid(missile_uniform_set_write)
-		if missile_uniform_set_read.is_valid(): rd.free_rid(missile_uniform_set_read)
-		if missile_buffer_rid_write.is_valid(): rd.free_rid(missile_buffer_rid_write)
-		if missile_buffer_rid_read.is_valid(): rd.free_rid(missile_buffer_rid_read)
-		if missile_pipeline.is_valid(): rd.free_rid(missile_pipeline)
-		if missile_shader_rid.is_valid(): rd.free_rid(missile_shader_rid)
-		
-		rd.free()
-		rd = null # Prevent double free
 		
 	if instance == self:
 		instance = null
@@ -273,6 +92,8 @@ func register_aircraft(a: Node) -> void:
 	if a not in aircrafts:
 		aircrafts.append(a)
 		_team_lists_dirty = true
+	else:
+		push_warning("[FlightManager] Aircraft already registered: ", a.get_instance_id())
 
 func unregister_aircraft(a: Node) -> void:
 	aircrafts.erase(a)
@@ -390,238 +211,20 @@ func _physics_process(delta: float) -> void:
 			WorkerThreadPool.wait_for_group_task_completion(_ai_task_group_id)
 			_ai_task_group_id = -1
 		
-		var task_count = min(ai_count, _thread_count)
+		# Limit max AI updates per frame to prevent performance spikes
+		# This ensures we never exceed aircraft_count AI calls per physics frame
+		var max_ai_per_frame = min(ai_count, max(10, aircraft_count))
+		var ai_to_process = min(ai_count, max_ai_per_frame)
+		
+		var task_count = min(ai_to_process, _thread_count)
 		_ai_task_group_id = WorkerThreadPool.add_group_task(
-			_process_ai_batch.bind(delta * 2.0, ai_count, task_count),  # delta * 2 because we skip frames
+			_process_ai_batch.bind(delta * 2.0, ai_to_process, task_count),  # delta * 2 because we skip frames
 			task_count,
 			-1,
 			true,
 			"AI Logic"
 		)
 	
-	# Compute Shader Physics (Aircraft) - Async with Double Buffering
-	# Read from previous frame, write to current frame
-	if rd:
-		# Wait for previous GPU work to complete before starting new frame
-		if _compute_submitted:
-			rd.sync()
-		
-		# Read results from PREVIOUS frame (if available)
-		if _compute_submitted:
-			if not _buffer_reader:
-				_buffer_reader = StreamPeerBuffer.new()
-			_buffer_reader.data_array = rd.buffer_get_data(buffer_rid_read)
-			
-			var off_read = 0
-			for a in aircrafts:
-				if not is_instance_valid(a):
-					off_read += 176
-					continue
-				
-				_buffer_reader.seek(off_read)
-				
-				# Read transform
-				var bx_x = _buffer_reader.get_float(); var bx_y = _buffer_reader.get_float(); var bx_z = _buffer_reader.get_float(); _buffer_reader.get_float()
-				var by_x = _buffer_reader.get_float(); var by_y = _buffer_reader.get_float(); var by_z = _buffer_reader.get_float(); _buffer_reader.get_float()
-				var bz_x = _buffer_reader.get_float(); var bz_y = _buffer_reader.get_float(); var bz_z = _buffer_reader.get_float(); _buffer_reader.get_float()
-				_buffer_reader.get_float(); _buffer_reader.get_float(); _buffer_reader.get_float(); _buffer_reader.get_float()
-				
-				# Read state
-				var vx = _buffer_reader.get_float(); var vy = _buffer_reader.get_float(); var vz = _buffer_reader.get_float(); var new_speed = _buffer_reader.get_float()
-				var new_pitch = _buffer_reader.get_float(); var new_roll = _buffer_reader.get_float()
-				
-				# Validate and apply - Enhanced validation
-				var new_basis_x = Vector3(bx_x, bx_y, bx_z)
-				var new_basis_y = Vector3(by_x, by_y, by_z)
-				var new_basis_z = Vector3(bz_x, bz_y, bz_z)
-				
-				if new_basis_x.is_finite() and new_basis_y.is_finite() and new_basis_z.is_finite():
-					var new_basis = Basis(new_basis_x, new_basis_y, new_basis_z)
-					var det = new_basis.determinant()
-					
-					# Only apply if basis is valid (determinant != 0)
-					if abs(det) > 0.001:
-						a.global_basis = new_basis
-						a.velocity = Vector3(vx, vy, vz)
-						a.current_speed = new_speed
-						a.current_pitch = new_pitch
-						a.current_roll = new_roll
-				
-				off_read += 176
-		
-		# Resize if needed
-		if aircraft_count > _buffer_capacity:
-			_resize_buffer(aircraft_count + 128)
-		
-		# Write input data for CURRENT frame
-		if not _buffer_writer:
-			_buffer_writer = StreamPeerBuffer.new()
-		_buffer_writer.data_array = _byte_array_write
-		
-		var offset = 0
-		for a in aircrafts:
-			if not is_instance_valid(a): continue
-			
-			var tf = a.global_transform
-			var basis = tf.basis
-			var origin = tf.origin
-			var vel = a.velocity
-			
-			_buffer_writer.seek(offset)
-			# Transform (64 bytes)
-			_buffer_writer.put_float(basis.x.x); _buffer_writer.put_float(basis.x.y); _buffer_writer.put_float(basis.x.z); _buffer_writer.put_float(0.0)
-			_buffer_writer.put_float(basis.y.x); _buffer_writer.put_float(basis.y.y); _buffer_writer.put_float(basis.y.z); _buffer_writer.put_float(0.0)
-			_buffer_writer.put_float(basis.z.x); _buffer_writer.put_float(basis.z.y); _buffer_writer.put_float(basis.z.z); _buffer_writer.put_float(0.0)
-			_buffer_writer.put_float(origin.x); _buffer_writer.put_float(origin.y); _buffer_writer.put_float(origin.z); _buffer_writer.put_float(1.0)
-			
-			# State (112 bytes)
-			_buffer_writer.put_float(vel.x); _buffer_writer.put_float(vel.y); _buffer_writer.put_float(vel.z); _buffer_writer.put_float(a.current_speed)
-			_buffer_writer.put_float(a.current_pitch); _buffer_writer.put_float(a.current_roll); _buffer_writer.put_float(a.throttle); _buffer_writer.put_float(0.0)
-			_buffer_writer.put_float(a.input_pitch); _buffer_writer.put_float(a.input_roll); _buffer_writer.put_float(0.0); _buffer_writer.put_float(delta)
-			_buffer_writer.put_float(a.max_speed); _buffer_writer.put_float(a.min_speed); _buffer_writer.put_float(a.acceleration); _buffer_writer.put_float(a.drag_factor)
-			_buffer_writer.put_float(a.pitch_speed); _buffer_writer.put_float(a.roll_speed); _buffer_writer.put_float(a.pitch_acceleration); _buffer_writer.put_float(a.roll_acceleration)
-			_buffer_writer.put_float(a._c_engine_factor); _buffer_writer.put_float(a._c_lift_factor); _buffer_writer.put_float(a._c_h_tail_factor); _buffer_writer.put_float(a._c_roll_authority)
-			_buffer_writer.put_float(a._c_wing_imbalance); _buffer_writer.put_float(a._c_v_tail_factor); _buffer_writer.put_float(0.0); _buffer_writer.put_float(0.0)
-			
-			offset += 176
-
-		# Submit compute for CURRENT frame (non-blocking)
-		rd.buffer_update(buffer_rid_write, 0, offset, _buffer_writer.data_array)
-		
-		var compute_list = rd.compute_list_begin()
-		rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
-		rd.compute_list_bind_uniform_set(compute_list, uniform_set_write, 0)
-		rd.compute_list_dispatch(compute_list, int(ceil(aircraft_count / 64.0)), 1, 1)
-		rd.compute_list_end()
-		
-		rd.submit()
-		# Sync happens at START of next frame (async pattern)
-		
-		# Swap buffers for next frame
-		var temp_rid = buffer_rid_write
-		buffer_rid_write = buffer_rid_read
-		buffer_rid_read = temp_rid
-		
-		var temp_uniform = uniform_set_write
-		uniform_set_write = uniform_set_read
-		uniform_set_read = temp_uniform
-		
-		var temp_array = _byte_array_write
-		_byte_array_write = _byte_array_read
-		_byte_array_read = temp_array
-		
-		_compute_submitted = true
-
-	# Missile Compute Shader Physics - Async with Double Buffering
-	var missile_count = active_missiles.size()
-	if missile_count > 0 and rd:
-		# Wait for ALL previous GPU work to complete before starting new compute
-		# This includes both previous missile work AND current frame aircraft work
-		rd.sync()
-		
-		# Read results from PREVIOUS frame (if available)
-		if _missile_compute_submitted:
-			if not _missile_buffer_reader:
-				_missile_buffer_reader = StreamPeerBuffer.new()
-			_missile_buffer_reader.data_array = rd.buffer_get_data(missile_buffer_rid_read)
-			
-			var m_off_read = 0
-			for i in range(missile_count - 1, -1, -1):
-				var m = active_missiles[i]
-				if not is_instance_valid(m):
-					m_off_read += 128
-					continue
-				
-				_missile_buffer_reader.seek(m_off_read)
-				
-				# Read transform
-				var bx_x = _missile_buffer_reader.get_float(); var bx_y = _missile_buffer_reader.get_float(); var bx_z = _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float()
-				var by_x = _missile_buffer_reader.get_float(); var by_y = _missile_buffer_reader.get_float(); var by_z = _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float()
-				var bz_x = _missile_buffer_reader.get_float(); var bz_y = _missile_buffer_reader.get_float(); var bz_z = _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float()
-				var ox = _missile_buffer_reader.get_float(); var oy = _missile_buffer_reader.get_float(); var oz = _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float()
-				
-				# Read state
-				var vx = _missile_buffer_reader.get_float(); var vy = _missile_buffer_reader.get_float(); var vz = _missile_buffer_reader.get_float(); var new_speed = _missile_buffer_reader.get_float()
-				_missile_buffer_reader.get_float(); _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float(); var new_life = _missile_buffer_reader.get_float()
-				_missile_buffer_reader.get_float(); _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float(); _missile_buffer_reader.get_float()
-				var state = _missile_buffer_reader.get_float()
-				
-				if state > 0.5:
-					m.explode()
-				else:
-					var new_origin = Vector3(ox, oy, oz)
-					if new_origin.is_finite() and new_origin.length_squared() < 1e14:
-						var new_basis = Basis(Vector3(bx_x, bx_y, bx_z), Vector3(by_x, by_y, by_z), Vector3(bz_x, bz_y, bz_z))
-						m.update_from_compute(Transform3D(new_basis, new_origin), Vector3(vx, vy, vz), new_speed, new_life)
-				
-				m_off_read += 128
-		
-		# Resize if needed
-		if missile_count > _missile_buffer_capacity:
-			_resize_missile_buffer(missile_count + 64)
-		
-		# Write input data for CURRENT frame
-		if not _missile_buffer_writer:
-			_missile_buffer_writer = StreamPeerBuffer.new()
-		_missile_buffer_writer.data_array = _missile_byte_array_write
-		
-		var m_offset = 0
-		for m in active_missiles:
-			if not is_instance_valid(m): continue
-			
-			var tf = m.global_transform
-			var basis = tf.basis
-			var origin = tf.origin
-			var vel = m.velocity
-			var target_pos = Vector3.ZERO
-			var has_target = 0.0
-			if is_instance_valid(m.target):
-				target_pos = m.target.global_position
-				has_target = 1.0
-			
-			_missile_buffer_writer.seek(m_offset)
-			# Transform (64 bytes)
-			_missile_buffer_writer.put_float(basis.x.x); _missile_buffer_writer.put_float(basis.x.y); _missile_buffer_writer.put_float(basis.x.z); _missile_buffer_writer.put_float(0.0)
-			_missile_buffer_writer.put_float(basis.y.x); _missile_buffer_writer.put_float(basis.y.y); _missile_buffer_writer.put_float(basis.y.z); _missile_buffer_writer.put_float(0.0)
-			_missile_buffer_writer.put_float(basis.z.x); _missile_buffer_writer.put_float(basis.z.y); _missile_buffer_writer.put_float(basis.z.z); _missile_buffer_writer.put_float(0.0)
-			_missile_buffer_writer.put_float(origin.x); _missile_buffer_writer.put_float(origin.y); _missile_buffer_writer.put_float(origin.z); _missile_buffer_writer.put_float(1.0)
-			
-			# State (64 bytes)
-			_missile_buffer_writer.put_float(vel.x); _missile_buffer_writer.put_float(vel.y); _missile_buffer_writer.put_float(vel.z); _missile_buffer_writer.put_float(m.speed)
-			_missile_buffer_writer.put_float(target_pos.x); _missile_buffer_writer.put_float(target_pos.y); _missile_buffer_writer.put_float(target_pos.z); _missile_buffer_writer.put_float(m._current_life)
-			_missile_buffer_writer.put_float(m.max_speed); _missile_buffer_writer.put_float(m.acceleration); _missile_buffer_writer.put_float(m.turn_speed); _missile_buffer_writer.put_float(m.lifetime)
-			_missile_buffer_writer.put_float(0.0); _missile_buffer_writer.put_float(has_target); _missile_buffer_writer.put_float(delta); _missile_buffer_writer.put_float(m.proximity_radius)
-			
-			m_offset += 128
-
-		# Submit compute for CURRENT frame (non-blocking)
-		rd.buffer_update(missile_buffer_rid_write, 0, m_offset, _missile_buffer_writer.data_array)
-		
-		var compute_list = rd.compute_list_begin()
-		rd.compute_list_bind_compute_pipeline(compute_list, missile_pipeline)
-		rd.compute_list_bind_uniform_set(compute_list, missile_uniform_set_write, 0)
-		var groups = ceil(missile_count / 64.0)
-		rd.compute_list_dispatch(compute_list, int(groups), 1, 1)
-		rd.compute_list_end()
-		
-		rd.submit()
-		# Sync happens at START of next frame (async pattern)
-		
-		# Swap buffers for next frame
-		var temp_m_rid = missile_buffer_rid_write
-		missile_buffer_rid_write = missile_buffer_rid_read
-		missile_buffer_rid_read = temp_m_rid
-		
-		var temp_m_uniform = missile_uniform_set_write
-		missile_uniform_set_write = missile_uniform_set_read
-		missile_uniform_set_read = temp_m_uniform
-		
-		var temp_m_array = _missile_byte_array_write
-		_missile_byte_array_write = _missile_byte_array_read
-		_missile_byte_array_read = temp_m_array
-		
-		_missile_compute_submitted = true
-
 	# Projectile Movement
 	var proj_count = _projectile_data.size()
 	if proj_count == 0:
@@ -711,9 +314,6 @@ func _update_cache() -> void:
 		if should_update_transform:
 			var tf = a.global_transform  # Only access when needed
 			
-			if a.has_method("prepare_for_threads_with_transform"):
-				a.prepare_for_threads_with_transform(tf)
-			
 			# Cache position for thread-safe access
 			_aircraft_positions[i] = tf.origin
 			
@@ -767,12 +367,16 @@ func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_task
 			has_player = true
 			break
 	
+	# Track AI updates per frame to ensure we don't exceed limits
+	var ai_calls_this_batch = 0
+	var max_calls = end_idx - start_idx
+	
 	for i in range(start_idx, min(end_idx, total_items)):
 		var ai = ai_controllers[i]
 		if not is_instance_valid(ai) or not is_instance_valid(ai.aircraft):
 			continue
 		
-		# Distance-based update frequency using cached positions (더 공격적인 최적화)
+		# Distance-based update frequency using cached positions
 		var update_interval = 8  # Default: every 8 frames
 		if has_player:
 			# Use cached aircraft index instead of find()
@@ -792,3 +396,8 @@ func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_task
 			continue
 		
 		ai.process_ai(delta * update_interval)
+		ai_calls_this_batch += 1
+		
+		# Safety limit: never process more AIs than allocated in this batch
+		if ai_calls_this_batch >= max_calls:
+			break
