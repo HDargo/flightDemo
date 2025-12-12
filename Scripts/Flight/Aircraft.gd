@@ -41,6 +41,7 @@ var last_missile_time: float = 0.0
 var missile_cooldown: float = 2.0
 var locked_target: Node3D = null
 var _performance_dirty: bool = false
+var _missile_wing_toggle: bool = false  # Toggle between left and right wing
 
 # Damage System
 var parts_health = {
@@ -344,22 +345,20 @@ func _deferred_fire_missile() -> void:
 	
 	# Use locked target
 	if not is_instance_valid(locked_target):
-		# print("No target locked!")
 		return
 	
 	last_missile_time = current_time
 	
+	# Alternate wing hardpoints
+	_missile_wing_toggle = !_missile_wing_toggle
+	var wing_offset = Vector3(3.5 if _missile_wing_toggle else -3.5, -1.5, -5.0)
+	
+	# Calculate spawn transform
+	var launch_transform = global_transform * Transform3D(Basis(), wing_offset)
+	
+	# Spawn via manager
 	if FlightManager.instance:
-		var launch_tf = global_transform * Transform3D(Basis(), Vector3(0, -1, 0)) # Drop from belly
-		FlightManager.instance.spawn_missile(launch_tf, locked_target, current_speed + 50.0)
-		print("Missile fired at ", locked_target.name)
-	else:
-		# Fallback
-		var missile = missile_scene.instantiate()
-		missile.speed = current_speed + 50.0 # Launch with boost
-		get_parent().add_child(missile)
-		missile.global_transform = global_transform * Transform3D(Basis(), Vector3(0, -1, 0)) # Drop from belly
-		missile.target = locked_target
+		FlightManager.instance.spawn_missile(launch_transform, locked_target, self)
 		print("Missile fired at ", locked_target.name)
 
 var _target_search_timer: float = 0.0

@@ -329,37 +329,27 @@ func return_projectile(p: Node) -> void:
 	if is_instance_valid(p):
 		p.queue_free()
 
-func spawn_missile(tf: Transform3D, target: Node3D, initial_speed: float) -> void:
-	var m: Node
+func spawn_missile(tf: Transform3D, target: Node3D, shooter: Node3D) -> void:
+	var m: Missile
 	if _missile_pool.is_empty():
-		m = _missile_scene.instantiate()
-		var root = get_tree().current_scene
-		root.add_child(m)
+		m = _missile_scene.instantiate() as Missile
+		get_tree().current_scene.add_child(m)
 	else:
-		m = _missile_pool.pop_back()
+		m = _missile_pool.pop_back() as Missile
 		if not is_instance_valid(m):
-			m = _missile_scene.instantiate()
-			var root = get_tree().current_scene
-			root.add_child(m)
+			m = _missile_scene.instantiate() as Missile
+			get_tree().current_scene.add_child(m)
 	
-	if m.has_method("reset"):
-		m.reset(tf, target, initial_speed)
-	else:
-		m.global_transform = tf
-		m.target = target
-		m.speed = initial_speed
-	
-	if not active_missiles.has(m):
-		active_missiles.append(m)
+	m.launch(tf, target, shooter)
 
-func return_missile(m: Node) -> void:
+func return_missile(m: Missile) -> void:
 	if is_instance_valid(m):
 		m.hide()
 		m.set_physics_process(false)
+		m.set_deferred("monitoring", false)
+		m.set_deferred("monitorable", false)
 		m.global_position = Vector3(0, -1000, 0)
 		_missile_pool.append(m)
-		if active_missiles.has(m):
-			active_missiles.erase(m)
 
 func get_aircraft_data(node: Node) -> Dictionary:
 	if not is_instance_valid(node): return {}
