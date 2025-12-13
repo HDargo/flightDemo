@@ -21,11 +21,24 @@ var _speed: float = START_SPEED
 var _life: float = 0.0
 var _active: bool = false
 
+# Trail reference
+var _trail: GPUParticles3D = null
+
+# Trail template for recreation
+var _trail_template: GPUParticles3D = null
+
 func _ready() -> void:
 	set_physics_process(false)
 	monitoring = false
 	monitorable = false
 	hide()
+	
+	# Cache trail reference and create template
+	_trail = get_node_or_null("Trail")
+	if _trail:
+		# Store a template copy for recreation
+		_trail_template = _trail.duplicate() as GPUParticles3D
+		_trail_template.emitting = false
 
 func launch(spawn_pos: Transform3D, tgt: Node3D, src: Node3D) -> void:
 	global_transform = spawn_pos
@@ -38,6 +51,17 @@ func launch(spawn_pos: Transform3D, tgt: Node3D, src: Node3D) -> void:
 	monitorable = false
 	show()
 	set_physics_process(true)
+	
+	# Recreate trail if it was reparented
+	if not _trail or not is_instance_valid(_trail) or _trail.get_parent() != self:
+		if _trail_template:
+			_trail = _trail_template.duplicate() as GPUParticles3D
+			add_child(_trail)
+			_trail.transform = Transform3D(Basis(), Vector3(0, 0, 0.5))
+	
+	# Restart trail emission
+	if _trail:
+		_trail.emitting = true
 
 func _physics_process(delta: float) -> void:
 	if not _active:
@@ -102,6 +126,27 @@ func explode() -> void:
 	if not _active: return
 	_active = false
 	set_physics_process(false)
+	
+	# Detach trail and let it finish independently
+	if _trail and is_instance_valid(_trail):
+		# Stop emitting NEW particles but keep existing ones
+		_trail.emitting = false
+		
+		# Reparent to scene root so it persists after missile is pooled
+		var trail_global_pos = _trail.global_transform
+		_trail.reparent(get_tree().current_scene, false)  # false = keep global transform
+		_trail.global_transform = trail_global_pos
+		
+		# Schedule trail cleanup after particles fade
+		var cleanup_time = _trail.lifetime + 0.5
+		var detached_trail = _trail  # Capture in closure
+		get_tree().create_timer(cleanup_time).timeout.connect(func(): 
+			if is_instance_valid(detached_trail):
+				detached_trail.queue_free()
+		)
+		
+		# Clear reference so we recreate on next launch
+		_trail = null
 	
 	# Blast damage
 	var space_state = get_world_3d().direct_space_state

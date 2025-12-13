@@ -7,6 +7,14 @@ static var instance: FlightManager
 var aircrafts: Array[Node] = []
 var ai_controllers: Array[Node] = []
 
+# Large-scale systems (NEW)
+var mass_aircraft_system: MassAircraftSystem
+var mass_ai_system: MassAISystem
+var use_mass_system: bool = false  # Toggle for testing
+
+# Spatial optimization
+var spatial_grid: SpatialGrid
+
 # Thread-Safe Cache
 var _aircraft_data_map: Dictionary = {}
 var _allies_list: Array[Dictionary] = []
@@ -51,8 +59,18 @@ func _ready() -> void:
 	_query_params = PhysicsRayQueryParameters3D.new()
 	_query_params.collide_with_areas = false
 	_query_params.collide_with_bodies = true
+	# Projectile collision mask: player(1) + ally(2) + enemy(4) + ground(8)
+	_query_params.collision_mask = 1 | 2 | 4 | 8
 	
 	_setup_multimesh()
+	
+	# Initialize spatial grid
+	spatial_grid = SpatialGrid.new()
+	spatial_grid.name = "SpatialGrid"
+	add_child(spatial_grid)
+	
+	# Initialize mass systems
+	_setup_mass_systems()
 
 func _setup_multimesh() -> void:
 	_multi_mesh_instance = MultiMeshInstance3D.new()
@@ -79,6 +97,23 @@ func _setup_multimesh() -> void:
 	
 	mm.mesh = mesh
 	_multi_mesh_instance.multimesh = mm
+
+func _setup_mass_systems() -> void:
+	# Create MassAircraftSystem
+	mass_aircraft_system = MassAircraftSystem.new()
+	mass_aircraft_system.name = "MassAircraftSystem"
+	add_child(mass_aircraft_system)
+	
+	# Create MassAISystem
+	mass_ai_system = MassAISystem.new()
+	mass_ai_system.name = "MassAISystem"
+	add_child(mass_ai_system)
+	mass_ai_system.initialize(mass_aircraft_system.MAX_AIRCRAFT)
+	
+	# LODSystem is integrated into MassAircraftSystem's rendering
+	# No separate LODSystem needed - MassAircraftSystem handles simple rendering
+	
+	print("[FlightManager] Mass systems initialized for 1000+ aircraft")
 
 func _exit_tree() -> void:
 	if _ai_task_group_id != -1:
@@ -194,7 +229,11 @@ func get_enemies_of(team: int) -> Array[Dictionary]:
 func _physics_process(delta: float) -> void:
 	_frame_count += 1
 	
-	# Early exit if no work to do
+	# Process mass system if enabled
+	if use_mass_system:
+		_process_mass_system(delta)
+	
+	# Early exit if no legacy aircraft
 	var aircraft_count = aircrafts.size()
 	if aircraft_count == 0:
 		_multi_mesh_instance.multimesh.visible_instance_count = 0
@@ -203,22 +242,22 @@ func _physics_process(delta: float) -> void:
 	# Update cache every frame (lightweight now)
 	_update_cache()
 	
-	# Start AI processing less frequently (every 2 physics frames)
+	# Start AI processing less frequently (every 3 physics frames for better performance)
 	var ai_count = ai_controllers.size()
-	if ai_count > 0 and (_frame_count & 1) == 0:
+	if ai_count > 0 and (_frame_count % 3) == 0:
 		# Wait for previous AI tasks only if they exist (moved here to avoid blocking early)
 		if _ai_task_group_id != -1:
 			WorkerThreadPool.wait_for_group_task_completion(_ai_task_group_id)
 			_ai_task_group_id = -1
 		
 		# Limit max AI updates per frame to prevent performance spikes
-		# This ensures we never exceed aircraft_count AI calls per physics frame
-		var max_ai_per_frame = min(ai_count, max(10, aircraft_count))
+		# Reduced limit for better frame stability
+		var max_ai_per_frame = min(ai_count, max(5, aircraft_count / 2))
 		var ai_to_process = min(ai_count, max_ai_per_frame)
 		
 		var task_count = min(ai_to_process, _thread_count)
 		_ai_task_group_id = WorkerThreadPool.add_group_task(
-			_process_ai_batch.bind(delta * 2.0, ai_to_process, task_count),  # delta * 2 because we skip frames
+			_process_ai_batch.bind(delta * 3.0, ai_to_process, task_count),  # delta * 3 because we skip frames
 			task_count,
 			-1,
 			true,
@@ -242,8 +281,8 @@ func _physics_process(delta: float) -> void:
 	var mm = _multi_mesh_instance.multimesh
 	var i = 0
 	
-	# Only do expensive raycasts every 2 frames
-	var do_raycast = (_frame_count & 1) == 0
+	# Only do expensive raycasts every 3 frames (better performance)
+	var do_raycast = (_frame_count % 3) == 0
 	
 	while i < _projectile_data.size():
 		var p = _projectile_data[i]
@@ -273,6 +312,10 @@ func _physics_process(delta: float) -> void:
 					var collider = result.collider
 					if is_instance_valid(collider) and collider.has_method("take_damage"):
 						collider.take_damage(p.damage, collider.to_local(result.position))
+						# Debug: Confirm hit
+						if collider.has_method("get") and collider.get("team") != null:
+							var team_name = "ALLY" if collider.team == GlobalEnums.Team.ALLY else "ENEMY"
+							print("[Projectile] HIT %s aircraft for %.1f damage at %s" % [team_name, p.damage, result.position])
 					# Recycle
 					_projectile_pool.append(p)
 					var last_idx = _projectile_data.size() - 1
@@ -296,8 +339,11 @@ func _update_cache() -> void:
 		_aircraft_positions.resize(aircraft_count)
 		_team_lists_dirty = true
 	
-	# Only update expensive transform cache every 2 frames for non-player aircraft
-	var update_all = (_frame_count & 1) == 0
+	# Update spatial grid
+	spatial_grid.clear()
+	
+	# Only update expensive transform cache every 3 frames for non-player aircraft
+	var update_all = (_frame_count % 3) == 0
 	
 	for i in range(aircraft_count):
 		var a = aircrafts[i]
@@ -316,6 +362,9 @@ func _update_cache() -> void:
 			
 			# Cache position for thread-safe access
 			_aircraft_positions[i] = tf.origin
+			
+			# Insert into spatial grid
+			spatial_grid.insert(i, _aircraft_positions[i])
 			
 			if data:
 				# Update existing data
@@ -401,3 +450,51 @@ func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_task
 		# Safety limit: never process more AIs than allocated in this batch
 		if ai_calls_this_batch >= max_calls:
 			break
+
+func _process_mass_system(delta: float) -> void:
+	if not mass_aircraft_system or not mass_ai_system:
+		return
+	
+	# Get camera position (from player or main camera)
+	var camera_pos = Vector3.ZERO
+	var player = get_tree().get_first_node_in_group("player")
+	if is_instance_valid(player):
+		camera_pos = player.global_position
+	else:
+		var camera = get_viewport().get_camera_3d()
+		if camera:
+			camera_pos = camera.global_position
+	
+	# Process AI
+	mass_ai_system.process_ai_batch(delta, mass_aircraft_system, camera_pos)
+	mass_ai_system.apply_ai_to_mass_system(mass_aircraft_system)
+	
+	# Mass system physics and rendering handled in its own _physics_process
+
+# Helper functions for spawning mass aircraft
+func spawn_mass_aircraft(position: Vector3, team: int, rotation: Vector3 = Vector3.ZERO) -> int:
+	if not mass_aircraft_system:
+		push_error("[FlightManager] MassAircraftSystem not initialized")
+		return -1
+	
+	return mass_aircraft_system.spawn_aircraft(position, team, rotation)
+
+func destroy_mass_aircraft(index: int) -> void:
+	if not mass_aircraft_system:
+		return
+	
+	mass_aircraft_system.destroy_aircraft(index)
+
+func spawn_formation(center: Vector3, team: int, count: int, spacing: float = 50.0) -> void:
+	# Spawn aircraft in V-formation
+	for i in range(count):
+		var row = i / 5
+		var col = i % 5
+		
+		var offset = Vector3(
+			(col - 2) * spacing,
+			-row * spacing * 0.5,
+			-row * spacing
+		)
+		
+		spawn_mass_aircraft(center + offset, team)

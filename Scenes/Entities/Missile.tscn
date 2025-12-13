@@ -48,12 +48,8 @@ transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0, 
 mesh = SubResource("CapsuleMesh_missile")
 
 [node name="Trail" type="GPUParticles3D" parent="."]
-amount = 20
-lifetime = 0.5
-local_coords = false
-process_material = SubResource("ParticleProcessMaterial_smoke")
-draw_pass_1 = SubResource("BoxMesh_smoke")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
+emitting = false
 amount = 50
 lifetime = 1.0
 local_coords = false

@@ -40,6 +40,10 @@ func _ready() -> void:
 	if not aircraft:
 		return
 	
+	# Initialize AI with default throttle to prevent immediate falling
+	aircraft.throttle = 0.7  # Start at 70% throttle
+	aircraft.input_throttle_up = true  # Begin accelerating
+	
 	my_id = aircraft.get_instance_id()
 	
 	# Cache aircraft index for fast lookup
@@ -110,41 +114,50 @@ func process_ai(delta: float) -> void:
 func find_target(my_data: Dictionary) -> void:
 	if is_instance_valid(target):
 		return
-		
-	# Use optimized list from FlightManager
-	var potential_targets = FlightManager.instance.get_enemies_of(my_data.team)
-	var total_targets = potential_targets.size()
 	
-	if total_targets == 0:
+	# Use Spatial Grid for fast proximity search
+	if not FlightManager.instance or not FlightManager.instance.spatial_grid:
 		return
-
+	
+	var nearby_indices = FlightManager.instance.spatial_grid.query_nearby(
+		my_data.pos,
+		detection_radius
+	)
+	
+	if nearby_indices.size() == 0:
+		return
+	
 	var closest_dist_sq = detection_radius * detection_radius
 	target = null
 	target_id = -1
 	
-	# Optimization: Random Sampling for large battles
-	# Instead of checking 300 enemies, check 20 random ones.
-	# This reduces complexity from O(N) to O(K) where K is constant (20).
-	var check_limit = 20
-	var use_sampling = total_targets > check_limit
-	
-	var iterations = total_targets if not use_sampling else check_limit
-	
-	for i in range(iterations):
-		var entry: Dictionary
-		if use_sampling:
-			entry = potential_targets[randi() % total_targets]
-		else:
-			entry = potential_targets[i]
-			
-		# Skip self (shouldn't be in enemy list, but good practice)
-		if entry.id == my_data.id: continue
+	# Check only nearby aircraft (spatial optimization)
+	for idx in nearby_indices:
+		if idx < 0 or idx >= FlightManager.instance.aircrafts.size():
+			continue
 		
-		var dist_sq = my_data.pos.distance_squared_to(entry.pos)
+		var other_aircraft = FlightManager.instance.aircrafts[idx]
+		if not is_instance_valid(other_aircraft):
+			continue
+		
+		# Skip same team
+		if other_aircraft.team == my_data.team:
+			continue
+		
+		# Skip self
+		var other_id = other_aircraft.get_instance_id()
+		if other_id == my_data.id:
+			continue
+		
+		var other_data = FlightManager.instance.get_aircraft_data_by_id(other_id)
+		if other_data.is_empty():
+			continue
+		
+		var dist_sq = my_data.pos.distance_squared_to(other_data.pos)
 		if dist_sq < closest_dist_sq:
 			closest_dist_sq = dist_sq
-			target = entry.ref
-			target_id = entry.id
+			target = other_aircraft
+			target_id = other_id
 
 func fly_straight() -> void:
 	aircraft.input_pitch = 0.0

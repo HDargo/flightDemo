@@ -15,9 +15,27 @@ run/main_scene="res://Scenes/Levels/MainLevel.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
 
+[debug]
+
+settings/stdout/print_fps=false
+
 [display]
 
 window/size/mode=4
+
+[layer_names]
+
+3d_physics/layer_1="player"
+3d_physics/layer_2="ally"
+3d_physics/layer_3="enemy"
+3d_physics/layer_4="ground"
+3d_physics/layer_5="projectile"
+
+[physics]
+
+common/max_physics_steps_per_frame=4
+common/physics_ticks_per_second=60
+common/physics_jitter_fix=0.5
 
 [input]
 

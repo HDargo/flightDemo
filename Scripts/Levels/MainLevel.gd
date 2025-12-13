@@ -2,9 +2,15 @@ extends Node3D
 
 @export var ally_scene: PackedScene = preload("res://Scenes/Entities/AllyAircraft.tscn")
 @export var enemy_scene: PackedScene = preload("res://Scenes/Entities/EnemyAircraft.tscn")
-@export var ally_count: int = 150  # Reduced from 150 for performance
-@export var enemy_count: int = 150  # Reduced from 150 for performance
+@export var ally_count: int = 150
+@export var enemy_count: int = 150
 @export var spawn_radius: float = 1000.0
+
+# Mass system settings (NEW)
+@export_group("Mass System")
+@export var use_mass_system: bool = false  # Toggle between legacy and mass system
+@export var mass_ally_count: int = 500
+@export var mass_enemy_count: int = 500
 
 @onready var aircraft: Aircraft = $Aircraft
 @onready var hud: HUD = $CanvasLayer/HUD
@@ -13,11 +19,11 @@ var pause_menu_scene = preload("res://Scenes/UI/PauseMenu.tscn")
 var game_over: bool = false
 var max_allies_count: int = 0
 var max_enemies_count: int = 0
-var _startup_delay: float = 2.0  # Wait 2 seconds for spawn to complete
+var _startup_delay: float = 2.0
 
-# Spawn Queue System
+# Spawn Queue System (legacy)
 var _spawn_queue: Array = []
-var _spawn_per_frame: int = 10
+var _spawn_per_frame: int = 5  # Reduced from 10 to prevent lag spikes
 var _is_spawning: bool = false
 
 func _ready() -> void:
@@ -34,21 +40,46 @@ func _ready() -> void:
 	if aircraft and hud:
 		hud.set_aircraft(aircraft)
 	
-	# Queue aircraft for gradual spawning instead of all at once
-	queue_aircraft_spawn(ally_scene, ally_count, GlobalEnums.Team.ALLY)
-	queue_aircraft_spawn(enemy_scene, enemy_count, GlobalEnums.Team.ENEMY)
-	
-	# Set expected counts
-	max_allies_count = ally_count
-	max_enemies_count = enemy_count
-	
-	_is_spawning = true
-	if hud:
-		hud.show_game_over("Loading...")
+	# Choose spawn method based on use_mass_system
+	if use_mass_system:
+		_spawn_mass_aircraft()
+	else:
+		# Queue aircraft for gradual spawning instead of all at once
+		queue_aircraft_spawn(ally_scene, ally_count, GlobalEnums.Team.ALLY)
+		queue_aircraft_spawn(enemy_scene, enemy_count, GlobalEnums.Team.ENEMY)
+		
+		# Set expected counts
+		max_allies_count = ally_count
+		max_enemies_count = enemy_count
+		
+		_is_spawning = true
+		if hud:
+			hud.show_game_over("Loading...")
 	
 	# Add Pause Menu
 	var pause_menu = pause_menu_scene.instantiate()
 	$CanvasLayer.add_child(pause_menu)
+
+func _spawn_mass_aircraft() -> void:
+	if not FlightManager.instance:
+		push_error("[MainLevel] FlightManager not initialized")
+		return
+	
+	FlightManager.instance.use_mass_system = true
+	
+	# Spawn allies in formation
+	var ally_center = Vector3(-spawn_radius * 0.5, 400, 200)
+	FlightManager.instance.spawn_formation(ally_center, GlobalEnums.Team.ALLY, mass_ally_count, 50.0)
+	
+	# Spawn enemies in formation
+	var enemy_center = Vector3(spawn_radius * 0.5, 450, -500)
+	FlightManager.instance.spawn_formation(enemy_center, GlobalEnums.Team.ENEMY, mass_enemy_count, 50.0)
+	
+	max_allies_count = mass_ally_count
+	max_enemies_count = mass_enemy_count
+	
+	print("[MainLevel] Spawned ", mass_ally_count, " allies and ", mass_enemy_count, " enemies using mass system")
+
 
 var _hud_update_timer: float = 0.0
 
@@ -84,11 +115,14 @@ func _process(delta: float) -> void:
 	var enemies_count = 0
 	
 	if FlightManager.instance:
-		# Optimization: Use cached lists from FlightManager
-		# get_enemies_of(ENEMY) returns Allies list
-		allies_count = FlightManager.instance.get_enemies_of(GlobalEnums.Team.ENEMY).size()
-		# get_enemies_of(ALLY) returns Enemies list
-		enemies_count = FlightManager.instance.get_enemies_of(GlobalEnums.Team.ALLY).size()
+		if use_mass_system:
+			# Use mass system counts
+			allies_count = FlightManager.instance.mass_aircraft_system.ally_count
+			enemies_count = FlightManager.instance.mass_aircraft_system.enemy_count
+		else:
+			# Optimization: Use cached lists from FlightManager
+			allies_count = FlightManager.instance.get_enemies_of(GlobalEnums.Team.ENEMY).size()
+			enemies_count = FlightManager.instance.get_enemies_of(GlobalEnums.Team.ALLY).size()
 	else:
 		# Fallback (Slow)
 		allies_count = get_tree().get_nodes_in_group("ally").size()

@@ -24,13 +24,17 @@ static func calculate_drag(
 	return drag * delta
 
 ## Calculate lift force vector
+## Returns lift velocity in m/s
 static func calculate_lift(
 	current_speed: float,
 	lift_factor: float,
 	lift_multiplier: float,
 	up_vector: Vector3
 ) -> Vector3:
-	return up_vector * (current_speed * lift_factor * lift_multiplier)
+	# Lift velocity proportional to speed squared (realistic aerodynamics)
+	# Returns m/s which will be multiplied by delta in caller
+	var lift_magnitude = lift_factor * lift_multiplier * current_speed * current_speed
+	return up_vector * lift_magnitude
 
 ## Apply pitch rotation to basis
 static func apply_pitch_rotation(

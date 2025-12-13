@@ -3,6 +3,7 @@ extends CharacterBody3D
 class_name Aircraft
 
 signal damage_taken(direction: Vector3)
+signal physics_updated(speed: float, altitude: float, vertical_speed: float, aoa: float, stall_factor: float)
 
 # Utility modules
 const FlightPhysics = preload("res://Scripts/Flight/FlightPhysics.gd")
@@ -10,7 +11,7 @@ const DamageSystem = preload("res://Scripts/Flight/DamageSystem.gd")
 
 # Settings
 @export var max_speed: float = 50.0
-@export var min_speed: float = 0.0
+@export var min_speed: float = 10.0  # Minimum flight speed to maintain lift
 @export var acceleration: float = 20.0
 @export var drag_factor: float = 0.01
 @export var turn_speed: float = 2.0
@@ -18,7 +19,7 @@ const DamageSystem = preload("res://Scripts/Flight/DamageSystem.gd")
 @export var roll_speed: float = 3.0
 @export var pitch_acceleration: float = 5.0
 @export var roll_acceleration: float = 5.0
-@export var lift_factor: float = 0.5
+@export var lift_factor: float = 0.05  # Reduced for speed^2 formula
 @export var mouse_sensitivity: float = 0.002
 @export var fire_rate: float = 0.1
 @export var missile_lock_range: float = 2000.0
@@ -46,6 +47,9 @@ var missile_cooldown: float = 2.0
 var locked_target: Node3D = null
 var _performance_dirty: bool = false
 var _missile_wing_toggle: bool = false  # Toggle between left and right wing
+
+# Debug
+var _last_debug_second: int = 0
 
 # Wing damage and crash state
 var _wing_destroyed: bool = false
@@ -131,6 +135,20 @@ func _ready() -> void:
 		add_to_group("ally")
 	elif team == GlobalEnums.Team.ENEMY:
 		add_to_group("enemy")
+	
+	# Physics Layer 설정 (충돌 최적화)
+	_setup_physics_layers()
+
+func _setup_physics_layers() -> void:
+	if is_player:
+		collision_layer = 1  # Layer 1 (player)
+		collision_mask = 4 | 8  # Layer 3 (enemy) + Layer 4 (ground)
+	elif team == GlobalEnums.Team.ALLY:
+		collision_layer = 2  # Layer 2 (ally)
+		collision_mask = 4 | 8  # Layer 3 (enemy) + Layer 4 (ground)
+	elif team == GlobalEnums.Team.ENEMY:
+		collision_layer = 4  # Layer 3 (enemy)
+		collision_mask = 1 | 2 | 8  # Layer 1 (player) + Layer 2 (ally) + Layer 4 (ground)
 
 
 func calculate_physics(delta: float) -> void:
@@ -204,15 +222,52 @@ func calculate_physics(delta: float) -> void:
 		# Lift force
 		var forward = -global_transform.basis.z
 		var up = global_transform.basis.y
-		var lift = FlightPhysics.calculate_lift(current_speed, lift_factor, _c_lift_factor, up)
 		
-		# Update velocity
+		# Calculate angle of attack (받음각)
+		var aoa = FlightPhysics.calculate_angle_of_attack(velocity, forward)
+		var stall_factor = FlightPhysics.calculate_stall_factor(aoa)
+		
+		# Lift calculation with stall factor
+		var lift = FlightPhysics.calculate_lift(current_speed, lift_factor * stall_factor, _c_lift_factor, up)
+		
+		# DEBUG: Print physics values
+		if is_player and int(Time.get_ticks_msec() / 1000.0) != _last_debug_second:
+			_last_debug_second = int(Time.get_ticks_msec() / 1000.0)
+			print("=== PHYSICS DEBUG ===")
+			print("Speed: %.1f | Throttle: %.1f%%" % [current_speed, throttle * 100])
+			print("Lift: %s (%.2f)" % [lift, lift.length()])
+			print("Up: %s (y=%.2f)" % [up, up.y])
+			print("Forward: %s" % forward)
+			print("AOA: %.1f° | Stall: %.2f" % [aoa, stall_factor])
+		
+		# Update velocity (ORIGINAL WORKING METHOD)
+		# Velocity = forward motion + lift force
 		velocity = forward * current_speed + lift * delta
 		
-		# Gravity
+		# Apply gravity
 		velocity.y -= 9.8 * delta
+		
+		# DEBUG
+		if is_player and _last_debug_second == int(Time.get_ticks_msec() / 1000.0):
+			print("Velocity: %s (%.2f)" % [velocity, velocity.length()])
+			print("Velocity.y: %.2f" % velocity.y)
+		
+		# Emit physics info for HUD (only for player)
+		if is_player:
+			emit_signal("physics_updated", current_speed, global_position.y, velocity.y, aoa, stall_factor)
+		
+		# Stall warning for player
+		if is_player and stall_factor < 0.8:
+			if randf() < 0.1:  # Occasional warning
+				print("[WARNING] STALL! Angle of Attack: %.1f degrees" % aoa)
 
 func _physics_process(delta: float) -> void:
+	# CRITICAL: Prevent physics death spiral
+	# If delta is too large, skip this frame to catch up
+	if delta > 0.1:  # More than 100ms per frame = severe lag
+		push_warning("[Aircraft] Skipping physics frame due to severe lag (delta: %.3f)" % delta)
+		return
+	
 	# Debug: Track call frequency
 	_physics_call_count += 1
 	_physics_call_timer += delta
@@ -245,6 +300,10 @@ func _physics_process(delta: float) -> void:
 	if is_player or is_crashing or global_position.y < safe_altitude:
 		move_and_slide()
 		
+		# DEBUG: Ground collision check
+		if is_player and global_position.y < 10.0:
+			print("[Aircraft] Low altitude: %.1f | Collisions: %d" % [global_position.y, get_slide_collision_count()])
+		
 		if get_slide_collision_count() > 0:
 			_handle_collision(delta)
 	else:
@@ -255,25 +314,33 @@ func _physics_process(delta: float) -> void:
 
 
 func _handle_collision(_delta: float) -> void:
+	if is_player:
+		print("[Aircraft] COLLISION DETECTED! Count: %d" % get_slide_collision_count())
+	
 	for i in range(get_slide_collision_count()):
-		var _collision = get_slide_collision(i)
-		# Assuming anything we hit is bad unless we are landing
-		# Landing conditions: Low speed, flat angle
+		var collision = get_slide_collision(i)
 		
+		if is_player:
+			print("  Collision %d: %s at %s" % [i, collision.get_collider(), collision.get_position()])
+		
+		# Landing conditions: Low speed, flat angle
 		var is_landing = FlightPhysics.check_landing_conditions(
 			current_speed,
 			transform.basis.y
 		)
 		
+		if is_player:
+			print("  Speed: %.1f | Is Landing: %s" % [current_speed, is_landing])
+		
 		if is_landing:
 			# Safe landing, stop
-			# current_speed = move_toward(current_speed, 0.0, 10.0 * delta) # Delta not available here easily, assume small step or pass it
-			# Let's just dampen speed
 			current_speed *= 0.95
-			# print("Landing...")
+			if is_player:
+				print("  → LANDING (speed reduced)")
 		else:
 			# Crash!
-			# print("CRASH!")
+			if is_player:
+				print("  → CRASH! Destroying aircraft...")
 			die()
 
 func process_player_input() -> void:
@@ -345,19 +412,27 @@ func _unhandled_input(event: InputEvent) -> void:
 func take_damage(amount: float, hit_pos_local: Vector3) -> void:
 	if is_player:
 		emit_signal("damage_taken", hit_pos_local)
-		
+	
+	# Debug output
+	var team_name = "PLAYER" if is_player else ("ALLY" if team == GlobalEnums.Team.ALLY else "ENEMY")
+	print("[Aircraft] %s taking %.1f damage at local pos %s" % [team_name, amount, hit_pos_local])
+	
 	# Determine part using DamageSystem
 	var part = DamageSystem.determine_hit_part(hit_pos_local)
+	print("  → Hit part: %s (health: %.1f)" % [part, parts_health.get(part, 0.0)])
 	
 	if part in parts_health:
 		parts_health[part] = max(0, parts_health[part] - amount)
+		print("  → New health: %.1f" % parts_health[part])
 		
 		_performance_dirty = true
 		
 		if parts_health[part] <= 0:
+			print("  → Part DESTROYED!")
 			break_part(part)
 		
 		if DamageSystem.check_critical_damage(parts_health):
+			print("  → CRITICAL DAMAGE - Aircraft destroyed!")
 			die()
 
 func break_part(part: String) -> void:
