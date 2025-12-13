@@ -6,7 +6,7 @@ class_name GroundProjectile
 @export var explosion_radius: float = 5.0
 @export var explosion_force: float = 10.0
 
-var faction: GlobalEnums.Faction = GlobalEnums.Faction.NEUTRAL
+var faction: GlobalEnums.Team = GlobalEnums.Team.NEUTRAL
 var has_hit: bool = false
 
 func _ready() -> void:
@@ -21,7 +21,7 @@ func _ready() -> void:
 func set_damage(new_damage: float) -> void:
 	damage = new_damage
 
-func set_faction(new_faction: GlobalEnums.Faction) -> void:
+func set_faction(new_faction: GlobalEnums.Team) -> void:
 	faction = new_faction
 
 func set_velocity(velocity: Vector3) -> void:

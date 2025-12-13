@@ -10,7 +10,7 @@ signal weapon_fired(projectile: Node3D)
 @export var muzzle_velocity_spread: float = 2.0
 
 var can_fire: bool = true
-var faction: GlobalEnums.Faction = GlobalEnums.Faction.NEUTRAL
+var faction: GlobalEnums.Team = GlobalEnums.Team.NEUTRAL
 
 @onready var fire_point: Node3D = $FirePoint if has_node("FirePoint") else get_parent()
 @onready var fire_timer: Timer = Timer.new()
@@ -20,7 +20,7 @@ func _ready() -> void:
 	fire_timer.one_shot = true
 	fire_timer.timeout.connect(_on_fire_timer_timeout)
 
-func set_faction(new_faction: GlobalEnums.Faction) -> void:
+func set_faction(new_faction: GlobalEnums.Team) -> void:
 	faction = new_faction
 
 func fire() -> void:

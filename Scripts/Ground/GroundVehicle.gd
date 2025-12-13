@@ -7,7 +7,7 @@ signal health_changed(current: float, max: float)
 enum VehicleType { TANK, APC, ARTILLERY, AA_GUN }
 
 @export var vehicle_type: VehicleType = VehicleType.TANK
-@export var faction: GlobalEnums.Faction = GlobalEnums.Faction.ENEMY
+@export var faction: GlobalEnums.Team = GlobalEnums.Team.ENEMY
 @export var max_speed: float = 20.0
 @export var acceleration: float = 5.0
 @export var turn_speed: float = 1.5
@@ -28,7 +28,7 @@ var is_alive: bool = true
 func _ready() -> void:
 	current_health = max_health
 	add_to_group("ground_vehicles")
-	add_to_group("ally_ground" if faction == GlobalEnums.Faction.ALLY else "enemy_ground")
+	add_to_group("ally_ground" if faction == GlobalEnums.Team.ALLY else "enemy_ground")
 	
 	if weapon_system and weapon_system.has_method("set_faction"):
 		weapon_system.set_faction(faction)
