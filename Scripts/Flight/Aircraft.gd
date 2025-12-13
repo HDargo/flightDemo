@@ -9,6 +9,10 @@ signal physics_updated(speed: float, altitude: float, vertical_speed: float, aoa
 const FlightPhysics = preload("res://Scripts/Flight/FlightPhysics.gd")
 const DamageSystem = preload("res://Scripts/Flight/DamageSystem.gd")
 
+# Components (NEW)
+var input_handler: Node = null
+var weapon_system: Node = null
+
 # Settings
 @export var max_speed: float = 50.0
 @export var min_speed: float = 10.0  # Minimum flight speed to maintain lift
@@ -40,13 +44,11 @@ var input_missile: bool = false
 var input_throttle_up: bool = false
 var input_throttle_down: bool = false
 
-var mouse_input: Vector2 = Vector2.ZERO
 var last_fire_time: float = 0.0
 var last_missile_time: float = 0.0
 var missile_cooldown: float = 2.0
 var locked_target: Node3D = null
 var _performance_dirty: bool = false
-var _missile_wing_toggle: bool = false  # Toggle between left and right wing
 
 # Debug
 var _last_debug_second: int = 0
@@ -104,17 +106,21 @@ func _enter_tree() -> void:
 		if is_player:
 			print("[Aircraft] Player aircraft registered: ", get_instance_id())
 
-var _target_search_task_id: int = -1
-var _next_locked_target: Node3D = null
-
 func _exit_tree() -> void:
-	if _target_search_task_id != -1:
-		WorkerThreadPool.wait_for_task_completion(_target_search_task_id)
+	# Cleanup weapon system threading
+	if weapon_system and "_target_search_task_id" in weapon_system:
+		var task_id = weapon_system._target_search_task_id
+		if task_id != -1:
+			WorkerThreadPool.wait_for_task_completion(task_id)
+	
 	if FlightManager.instance:
 		FlightManager.instance.unregister_aircraft(self)
 
 func _ready() -> void:
 	# Physics process is enabled by default for CharacterBody3D
+	
+	# Setup components FIRST
+	_setup_components()
 	
 	# Only register if not already registered in _enter_tree
 	if not FlightManager.instance:
@@ -138,6 +144,22 @@ func _ready() -> void:
 	
 	# Physics Layer 설정 (충돌 최적화)
 	_setup_physics_layers()
+
+func _setup_components() -> void:
+	# Setup input handler for player aircraft
+	if is_player:
+		var AircraftInputHandler = load("res://Scripts/Flight/Components/AircraftInputHandler.gd")
+		input_handler = AircraftInputHandler.new()
+		input_handler.mouse_sensitivity = mouse_sensitivity
+		add_child(input_handler)
+	
+	# Setup weapon system
+	var AircraftWeaponSystem = load("res://Scripts/Flight/Components/AircraftWeaponSystem.gd")
+	weapon_system = AircraftWeaponSystem.new()
+	weapon_system.fire_rate = fire_rate
+	weapon_system.missile_cooldown = missile_cooldown
+	weapon_system.missile_lock_range = missile_lock_range
+	add_child(weapon_system)
 
 func _setup_physics_layers() -> void:
 	if is_player:
@@ -262,6 +284,11 @@ func calculate_physics(delta: float) -> void:
 				print("[WARNING] STALL! Angle of Attack: %.1f degrees" % aoa)
 
 func _physics_process(delta: float) -> void:
+	# CRITICAL: Prevent duplicate calls from inherited scenes
+	# This can happen if scripts are attached to both parent and child scenes
+	if not is_inside_tree():
+		return
+	
 	# CRITICAL: Prevent physics death spiral
 	# If delta is too large, skip this frame to catch up
 	if delta > 0.1:  # More than 100ms per frame = severe lag
@@ -276,15 +303,26 @@ func _physics_process(delta: float) -> void:
 			var expected_fps = Engine.physics_ticks_per_second
 			var actual_calls = _physics_call_count
 			var ratio = float(actual_calls) / expected_fps
-			print("[Aircraft] Physics calls: ", actual_calls, " | Expected: ", expected_fps, " | Ratio: ", "%.2f" % ratio, "x")
+			# print("[Aircraft] Physics calls: ", actual_calls, " | Expected: ", expected_fps, " | Ratio: ", "%.2f" % ratio, "x")
 			if ratio > 1.5:
 				push_warning("[Aircraft] Physics process called ", ratio, "x more than expected!")
+				push_warning("[Aircraft] Instance ID: ", get_instance_id(), " | Path: ", get_path())
 		_physics_call_count = 0
 		_physics_call_timer = 0.0
 	
 	if _performance_dirty:
 		recalculate_performance_factors()
 		_performance_dirty = false
+	
+	# Update input from InputHandler (if player)
+	if is_player and input_handler:
+		input_handler.process_input()
+		input_pitch = input_handler.input_pitch
+		input_roll = input_handler.input_roll
+		input_fire = input_handler.input_fire
+		input_missile = input_handler.input_missile
+		input_throttle_up = input_handler.input_throttle_up
+		input_throttle_down = input_handler.input_throttle_down
 	
 	# CPU-based physics calculation
 	calculate_physics(delta)
@@ -343,71 +381,18 @@ func _handle_collision(_delta: float) -> void:
 				print("  → CRASH! Destroying aircraft...")
 			die()
 
-func process_player_input() -> void:
-	# Get input from new input actions (supports keyboard, joystick, mouse)
-	var pitch_input = Input.get_axis("flight_pitch_up", "flight_pitch_down")
-	var roll_input = Input.get_axis("flight_roll_left", "flight_roll_right")
-	
-	# Apply pitch and roll (inverted for correct feel)
-	input_pitch = -pitch_input
-	input_roll = -roll_input
-	
-	# Mouse Input (Accumulated from _unhandled_input)
-	if mouse_input.length_squared() > 0:
-		# Add mouse input to keyboard/joystick input
-		# Sensitivity is already applied in _unhandled_input
-		input_pitch += mouse_input.y
-		input_roll += mouse_input.x
-		
-		# Reset accumulator for next frame
-		mouse_input = Vector2.ZERO
-	
-	# Weapons
-	input_fire = Input.is_action_pressed("flight_fire_gun")
-	input_missile = Input.is_action_pressed("flight_fire_missile")
-	
-	# Throttle
-	input_throttle_up = Input.is_action_pressed("flight_throttle_up")
-	input_throttle_down = Input.is_action_pressed("flight_throttle_down")
+# Debug helper functions for InputHandler
+func _debug_destroy_left_wing() -> void:
+	parts_health["l_wing_in"] = 0.0
+	parts_health["l_wing_out"] = 0.0
+	break_part("l_wing_in")
+	break_part("l_wing_out")
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not is_player: return
-	
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		# Accumulate mouse delta
-		# Pitch (Y): Up is negative in screen, but we want Up to pitch up (positive or negative depending on convention)
-		# Usually Pull Back (Mouse Down) -> Pitch Up.
-		# Mouse Down is +Y.
-		# So +Y -> Pitch Up.
-		
-		# Roll (X): Mouse Right -> Roll Right.
-		# Mouse Right is +X.
-		# So +X -> Roll Right.
-		
-		mouse_input.y += event.relative.y * mouse_sensitivity
-		mouse_input.x += event.relative.x * mouse_sensitivity
-
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
-		var cam = get_node_or_null("CameraRig")
-		if cam:
-			cam.toggle_view()
-	
-	# Debug: Test wing damage
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_T:
-			# Destroy left wing
-			print("[DEBUG] Destroying left wing...")
-			parts_health["l_wing_in"] = 0.0
-			parts_health["l_wing_out"] = 0.0
-			break_part("l_wing_in")
-			break_part("l_wing_out")
-		elif event.keycode == KEY_Y:
-			# Destroy right wing
-			print("[DEBUG] Destroying right wing...")
-			parts_health["r_wing_in"] = 0.0
-			parts_health["r_wing_out"] = 0.0
-			break_part("r_wing_in")
-			break_part("r_wing_out")
+func _debug_destroy_right_wing() -> void:
+	parts_health["r_wing_in"] = 0.0
+	parts_health["r_wing_out"] = 0.0
+	break_part("r_wing_in")
+	break_part("r_wing_out")
 
 func take_damage(amount: float, hit_pos_local: Vector3) -> void:
 	if is_player:
@@ -480,127 +465,20 @@ func die() -> void:
 	explosion.scale = Vector3.ONE * 3.0 # Big explosion
 	queue_free()
 
-func _deferred_shoot() -> void:
-	var current_time = Time.get_ticks_msec() / 1000.0
-	if current_time - last_fire_time < fire_rate:
-		return
-	
-	last_fire_time = current_time
-	
-	# Spawn projectiles (Twin guns)
-	var offsets = [Vector3(1.5, 0, -1), Vector3(-1.5, 0, -1)] # Wing mounted
-	
-	if FlightManager.instance:
-		for offset in offsets:
-			var tf = global_transform * Transform3D(Basis(), offset)
-			FlightManager.instance.spawn_projectile(tf)
-
-func _deferred_fire_missile() -> void:
-	var current_time = Time.get_ticks_msec() / 1000.0
-	if current_time - last_missile_time < missile_cooldown:
-		return
-	
-	# Use locked target
-	if not is_instance_valid(locked_target):
-		return
-	
-	last_missile_time = current_time
-	
-	# Alternate wing hardpoints
-	_missile_wing_toggle = !_missile_wing_toggle
-	var wing_offset = Vector3(3.5 if _missile_wing_toggle else -3.5, -1.5, -5.0)
-	
-	# Calculate spawn transform
-	var launch_transform = global_transform * Transform3D(Basis(), wing_offset)
-	
-	# Spawn via manager
-	if FlightManager.instance:
-		FlightManager.instance.spawn_missile(launch_transform, locked_target, self)
-		print("Missile fired at ", locked_target.name)
-
-var _target_search_timer: float = 0.0
-var _target_search_interval: float = 0.2 # 5 times per second
-
 # Debug: Track physics_process calls
 var _physics_call_count: int = 0
 var _physics_call_timer: float = 0.0
 
 func _process(delta: float) -> void:
-	# Logic from calculate_forces
-	var current_time = Time.get_ticks_msec() / 1000.0
+	# Process weapons through weapon system
+	if weapon_system:
+		weapon_system.process_weapons(delta, input_fire, input_missile)
+		
+		# Update locked target reference
+		locked_target = weapon_system.locked_target
+		last_fire_time = weapon_system.last_fire_time
+		last_missile_time = weapon_system.last_missile_time
 	
-	if input_fire and (current_time - last_fire_time >= fire_rate):
-		call_deferred("_deferred_shoot")
-	
-	if input_missile and (current_time - last_missile_time >= missile_cooldown):
-		call_deferred("_deferred_fire_missile")
-	
-	if input_throttle_up:
-		throttle = min(throttle + delta, 1.0)
-	elif input_throttle_down:
-		throttle = max(throttle - delta, 0.0)
-
-	if is_player:
-		# 1. Process Input on Main Thread (Safe)
-		process_player_input()
-		
-		# 2. Check Async Search Result
-		if _target_search_task_id != -1:
-			if WorkerThreadPool.is_task_completed(_target_search_task_id):
-				WorkerThreadPool.wait_for_task_completion(_target_search_task_id)
-				_target_search_task_id = -1
-				locked_target = _next_locked_target
-		
-		# 3. Throttle Target Search
-		_target_search_timer -= delta
-		if _target_search_timer <= 0 and _target_search_task_id == -1:
-			_target_search_timer = _target_search_interval
-			_start_target_search()
-
-func _start_target_search() -> void:
-	if not FlightManager.instance: return
-	
-	# Snapshot data for thread
-	var enemies = FlightManager.instance.get_enemies_of(team).duplicate()
-	var params = {
-		"targets": enemies,
-		"my_pos": global_position,
-		"my_forward": -global_transform.basis.z,
-		"range_sq": missile_lock_range * missile_lock_range
-	}
-	
-	_target_search_task_id = WorkerThreadPool.add_task(
-		_thread_find_target.bind(params),
-		true,
-		"Target Search"
-	)
-
-func _thread_find_target(params: Dictionary) -> void:
-	var best_target = null
-	var best_angle = 0.5
-	var my_pos = params.my_pos
-	var my_forward = params.my_forward
-	var range_sq = params.range_sq
-	
-	for entry in params.targets:
-		if not is_instance_valid(entry.ref): continue
-		
-		var to_target = entry.pos - my_pos
-		var dist_sq = to_target.length_squared()
-		if dist_sq > range_sq: continue
-		
-		# Optimize: Avoid full normalization (3 divisions)
-		# angle = dot(forward, to_target.normalized())
-		#       = dot(forward, to_target / dist)
-		#       = dot(forward, to_target) / dist
-		
-		var dist = sqrt(dist_sq)
-		if dist < 0.001: continue
-		
-		var angle = my_forward.dot(to_target) / dist
-		
-		if angle > best_angle:
-			best_angle = angle
-			best_target = entry.ref
-			
-	_next_locked_target = best_target
+	# Player-only: target search
+	if is_player and weapon_system:
+		weapon_system.process_target_search(delta)
