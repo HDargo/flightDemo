@@ -34,11 +34,11 @@ func _on_body_entered(body: Node) -> void:
 	has_hit = true
 	
 	if body.has_method("take_damage"):
-		var target_faction = GlobalEnums.Faction.NEUTRAL
+		var target_faction = GlobalEnums.Team.NEUTRAL
 		if body.has_method("get_faction"):
 			target_faction = body.get_faction()
 		
-		if target_faction != faction and faction != GlobalEnums.Faction.NEUTRAL:
+		if target_faction != faction and faction != GlobalEnums.Team.NEUTRAL:
 			body.take_damage(damage, global_position, faction)
 	
 	_explode()
@@ -63,11 +63,11 @@ func _apply_explosion_damage() -> void:
 	for result in results:
 		var body = result.collider
 		if body.has_method("take_damage"):
-			var target_faction = GlobalEnums.Faction.NEUTRAL
+			var target_faction = GlobalEnums.Team.NEUTRAL
 			if body.has_method("get_faction"):
 				target_faction = body.get_faction()
 			
-			if target_faction != faction and faction != GlobalEnums.Faction.NEUTRAL:
+			if target_faction != faction and faction != GlobalEnums.Team.NEUTRAL:
 				var distance = global_position.distance_to(body.global_position)
 				var damage_multiplier = 1.0 - (distance / explosion_radius)
 				var explosion_damage = damage * damage_multiplier * 0.5

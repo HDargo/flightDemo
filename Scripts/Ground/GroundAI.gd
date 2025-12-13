@@ -112,10 +112,10 @@ func _process_retreat(delta: float) -> void:
 		vehicle.set_target_speed(vehicle.max_speed)
 
 func _scan_for_enemies() -> void:
-	var enemy_group = "enemy_aircraft" if vehicle.faction == GlobalEnums.Faction.ALLY else "ally_aircraft"
+	var enemy_group = "enemy_aircraft" if vehicle.faction == GlobalEnums.Team.ALLY else "ally_aircraft"
 	var enemies = get_tree().get_nodes_in_group(enemy_group)
 	
-	var ground_enemy_group = "enemy_ground" if vehicle.faction == GlobalEnums.Faction.ALLY else "ally_ground"
+	var ground_enemy_group = "enemy_ground" if vehicle.faction == GlobalEnums.Team.ALLY else "ally_ground"
 	enemies.append_array(get_tree().get_nodes_in_group(ground_enemy_group))
 	
 	var closest_enemy: Node3D = null

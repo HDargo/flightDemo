@@ -216,7 +216,7 @@ func _update_rendering() -> void:
 		var team = teams[i]
 		var vtype = vehicle_types[i]
 		
-		if team == GlobalEnums.Faction.ALLY:
+		if team == GlobalEnums.Team.ALLY:
 			if vtype == 0:  # Tank
 				if ally_tank_idx < _multimesh_ally_tank.multimesh.instance_count:
 					_multimesh_ally_tank.multimesh.set_instance_transform(ally_tank_idx, transform)
@@ -249,7 +249,7 @@ func _is_in_frustum(pos: Vector3) -> bool:
 			return false
 	return true
 
-func spawn_vehicle(pos: Vector3, faction: GlobalEnums.Faction, vtype: int = 0) -> int:
+func spawn_vehicle(pos: Vector3, faction: GlobalEnums.Team, vtype: int = 0) -> int:
 	if active_count >= MAX_VEHICLES:
 		return -1
 	
@@ -272,7 +272,7 @@ func spawn_vehicle(pos: Vector3, faction: GlobalEnums.Faction, vtype: int = 0) -
 	input_throttles[idx] = 0.0
 	input_steers[idx] = 0.0
 	
-	if faction == GlobalEnums.Faction.ALLY:
+	if faction == GlobalEnums.Team.ALLY:
 		ally_count += 1
 	else:
 		enemy_count += 1
@@ -288,7 +288,7 @@ func destroy_vehicle(idx: int) -> void:
 	
 	states[idx] = 0
 	
-	if teams[idx] == GlobalEnums.Faction.ALLY:
+	if teams[idx] == GlobalEnums.Team.ALLY:
 		ally_count -= 1
 	else:
 		enemy_count -= 1
@@ -298,10 +298,10 @@ func get_vehicle_position(idx: int) -> Vector3:
 		return positions[idx]
 	return Vector3.ZERO
 
-func get_vehicle_team(idx: int) -> GlobalEnums.Faction:
+func get_vehicle_team(idx: int) -> GlobalEnums.Team:
 	if idx >= 0 and idx < active_count:
-		return teams[idx]
-	return GlobalEnums.Faction.ALLY
+		return teams[idx] as GlobalEnums.Team
+	return GlobalEnums.Team.ALLY
 
 func is_vehicle_alive(idx: int) -> bool:
 	if idx >= 0 and idx < active_count:

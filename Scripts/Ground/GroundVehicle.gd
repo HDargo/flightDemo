@@ -72,7 +72,7 @@ func fire_weapon() -> void:
 	if weapon_system and weapon_system.has_method("fire"):
 		weapon_system.fire()
 
-func take_damage(amount: float, hit_position: Vector3 = Vector3.ZERO, _attacker_faction: GlobalEnums.Faction = GlobalEnums.Faction.NEUTRAL) -> void:
+func take_damage(amount: float, hit_position: Vector3 = Vector3.ZERO, _attacker_faction: GlobalEnums.Team = GlobalEnums.Team.NEUTRAL) -> void:
 	if not is_alive:
 		return
 	
@@ -93,7 +93,7 @@ func _die() -> void:
 	
 	queue_free()
 
-func get_faction() -> GlobalEnums.Faction:
+func get_faction() -> GlobalEnums.Team:
 	return faction
 
 func get_health_percentage() -> float:

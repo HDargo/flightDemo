@@ -111,19 +111,7 @@ func _spawn_ground_vehicles() -> void:
 			0,
 			randf_range(-ground_spawn_radius, 0)
 		)
-		var random_rot = Vector3(0, randf_range(0, TAU), 0)
-		var vehicle = ground_system.spawn_vehicle(random_pos, random_rot, GlobalEnums.Faction.ALLY)
-		
-		if vehicle and vehicle.has_node("GroundAI"):
-			var ai = vehicle.get_node("GroundAI") as GroundAI
-			var waypoints: Array[Vector3] = []
-			for j in range(3):
-				waypoints.append(Vector3(
-					randf_range(-ground_spawn_radius, ground_spawn_radius),
-					0,
-					randf_range(-ground_spawn_radius, ground_spawn_radius)
-				))
-			ai.set_waypoints(waypoints)
+		var idx = ground_system.spawn_vehicle(random_pos, GlobalEnums.Team.ALLY, 0)
 	
 	# Spawn enemy ground vehicles
 	for i in range(enemy_ground_count):
@@ -132,19 +120,7 @@ func _spawn_ground_vehicles() -> void:
 			0,
 			randf_range(0, ground_spawn_radius)
 		)
-		var random_rot = Vector3(0, randf_range(0, TAU), 0)
-		var vehicle = ground_system.spawn_vehicle(random_pos, random_rot, GlobalEnums.Faction.ENEMY)
-		
-		if vehicle and vehicle.has_node("GroundAI"):
-			var ai = vehicle.get_node("GroundAI") as GroundAI
-			var waypoints: Array[Vector3] = []
-			for j in range(3):
-				waypoints.append(Vector3(
-					randf_range(-ground_spawn_radius, ground_spawn_radius),
-					0,
-					randf_range(-ground_spawn_radius, ground_spawn_radius)
-				))
-			ai.set_waypoints(waypoints)
+		var idx = ground_system.spawn_vehicle(random_pos, GlobalEnums.Team.ENEMY, 0)
 	
 	print("[MainLevel] Spawned ", ally_ground_count, " ally and ", enemy_ground_count, " enemy ground vehicles")
 
