@@ -12,8 +12,17 @@ extends Node3D
 @export var mass_ally_count: int = 500
 @export var mass_enemy_count: int = 500
 
+# Ground vehicle settings (NEW)
+@export_group("Ground Vehicles")
+@export var spawn_ground_vehicles: bool = false
+@export var ground_vehicle_scene: PackedScene
+@export var ally_ground_count: int = 20
+@export var enemy_ground_count: int = 20
+@export var ground_spawn_radius: float = 800.0
+
 @onready var aircraft: Aircraft = $Aircraft
 @onready var hud: HUD = $CanvasLayer/HUD
+@onready var ground_system: MassGroundSystem = null
 
 var pause_menu_scene = preload("res://Scenes/UI/PauseMenu.tscn")
 var game_over: bool = false
@@ -33,6 +42,13 @@ func _ready() -> void:
 	# Initialize FlightManager
 	var flight_manager = FlightManager.new()
 	add_child(flight_manager)
+	
+	# Initialize Ground System if needed
+	if spawn_ground_vehicles:
+		ground_system = MassGroundSystem.new()
+		ground_system.ground_vehicle_scene = ground_vehicle_scene
+		ground_system.max_vehicles = ally_ground_count + enemy_ground_count
+		add_child(ground_system)
 	
 	# Use exclusive fullscreen for better performance and true fullscreen experience
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -55,6 +71,10 @@ func _ready() -> void:
 		_is_spawning = true
 		if hud:
 			hud.show_game_over("Loading...")
+	
+	# Spawn ground vehicles
+	if spawn_ground_vehicles and ground_system:
+		_spawn_ground_vehicles()
 	
 	# Add Pause Menu
 	var pause_menu = pause_menu_scene.instantiate()
@@ -79,6 +99,54 @@ func _spawn_mass_aircraft() -> void:
 	max_enemies_count = mass_enemy_count
 	
 	print("[MainLevel] Spawned ", mass_ally_count, " allies and ", mass_enemy_count, " enemies using mass system")
+
+func _spawn_ground_vehicles() -> void:
+	if not ground_system:
+		return
+	
+	# Spawn ally ground vehicles
+	for i in range(ally_ground_count):
+		var random_pos = Vector3(
+			randf_range(-ground_spawn_radius, ground_spawn_radius),
+			0,
+			randf_range(-ground_spawn_radius, 0)
+		)
+		var random_rot = Vector3(0, randf_range(0, TAU), 0)
+		var vehicle = ground_system.spawn_vehicle(random_pos, random_rot, GlobalEnums.Faction.ALLY)
+		
+		if vehicle and vehicle.has_node("GroundAI"):
+			var ai = vehicle.get_node("GroundAI") as GroundAI
+			var waypoints: Array[Vector3] = []
+			for j in range(3):
+				waypoints.append(Vector3(
+					randf_range(-ground_spawn_radius, ground_spawn_radius),
+					0,
+					randf_range(-ground_spawn_radius, ground_spawn_radius)
+				))
+			ai.set_waypoints(waypoints)
+	
+	# Spawn enemy ground vehicles
+	for i in range(enemy_ground_count):
+		var random_pos = Vector3(
+			randf_range(-ground_spawn_radius, ground_spawn_radius),
+			0,
+			randf_range(0, ground_spawn_radius)
+		)
+		var random_rot = Vector3(0, randf_range(0, TAU), 0)
+		var vehicle = ground_system.spawn_vehicle(random_pos, random_rot, GlobalEnums.Faction.ENEMY)
+		
+		if vehicle and vehicle.has_node("GroundAI"):
+			var ai = vehicle.get_node("GroundAI") as GroundAI
+			var waypoints: Array[Vector3] = []
+			for j in range(3):
+				waypoints.append(Vector3(
+					randf_range(-ground_spawn_radius, ground_spawn_radius),
+					0,
+					randf_range(-ground_spawn_radius, ground_spawn_radius)
+				))
+			ai.set_waypoints(waypoints)
+	
+	print("[MainLevel] Spawned ", ally_ground_count, " ally and ", enemy_ground_count, " enemy ground vehicles")
 
 
 var _hud_update_timer: float = 0.0

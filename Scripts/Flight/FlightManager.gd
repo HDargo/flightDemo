@@ -10,6 +10,7 @@ var ai_controllers: Array[Node] = []
 # Large-scale systems (NEW)
 var mass_aircraft_system: MassAircraftSystem
 var mass_ai_system: MassAISystem
+var mass_ground_system: MassGroundSystem
 var use_mass_system: bool = false  # Toggle for testing
 
 # Spatial optimization
@@ -110,10 +111,19 @@ func _setup_mass_systems() -> void:
 	add_child(mass_ai_system)
 	mass_ai_system.initialize(mass_aircraft_system.MAX_AIRCRAFT)
 	
-	# LODSystem is integrated into MassAircraftSystem's rendering
-	# No separate LODSystem needed - MassAircraftSystem handles simple rendering
+	# Create MassGroundSystem
+	mass_ground_system = MassGroundSystem.new()
+	mass_ground_system.name = "MassGroundSystem"
+	add_child(mass_ground_system)
 	
-	print("[FlightManager] Mass systems initialized for 1000+ aircraft")
+	# Create MassGroundAI
+	var ground_ai = MassGroundAI.new()
+	ground_ai.name = "MassGroundAI"
+	add_child(ground_ai)
+	ground_ai.initialize(mass_ground_system.MAX_VEHICLES)
+	ground_ai.set_ground_system(mass_ground_system)
+	
+	print("[FlightManager] Mass systems initialized for 1000+ aircraft and 500+ ground vehicles")
 
 func _exit_tree() -> void:
 	if _ai_task_group_id != -1:
