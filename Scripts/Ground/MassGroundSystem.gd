@@ -113,23 +113,64 @@ func _create_multimesh_instance(mesh: Mesh, name_prefix: String) -> MultiMeshIns
 	
 	return mmi
 
-func _create_tank_mesh() -> BoxMesh:
-	var mesh = BoxMesh.new()
-	mesh.size = Vector3(3, 2, 4)
+func _create_tank_mesh() -> ArrayMesh:
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
-	var material = StandardMaterial3D.new()
-	material.albedo_color = Color(0.3, 0.3, 0.3)
-	mesh.material = material
+	# 1. Hull
+	var hull = BoxMesh.new()
+	hull.size = Vector3(3.2, 1.4, 5.5)
+	var hull_t = Transform3D.IDENTITY.translated(Vector3(0, 0.7, 0)) # Lift bottom to 0
+	st.append_from(hull, 0, hull_t)
+	
+	# 2. Turret
+	var turret = BoxMesh.new()
+	turret.size = Vector3(2.0, 0.8, 2.5)
+	var turret_t = Transform3D.IDENTITY.translated(Vector3(0, 1.8, -0.2))
+	st.append_from(turret, 0, turret_t)
+	
+	# 3. Barrel
+	var barrel = CylinderMesh.new()
+	barrel.top_radius = 0.15
+	barrel.bottom_radius = 0.15
+	barrel.height = 3.5
+	var barrel_t = Transform3D.IDENTITY.rotated(Vector3.RIGHT, -PI/2)
+	barrel_t.origin = Vector3(0, 1.8, -2.5)
+	st.append_from(barrel, 0, barrel_t)
+
+	var mesh = st.commit()
+	
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.25, 0.3, 0.2) # Dark Green
+	mat.roughness = 0.8
+	mesh.surface_set_material(0, mat)
 	
 	return mesh
 
-func _create_apc_mesh() -> BoxMesh:
-	var mesh = BoxMesh.new()
-	mesh.size = Vector3(2.5, 2.5, 5)
+func _create_apc_mesh() -> ArrayMesh:
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
-	var material = StandardMaterial3D.new()
-	material.albedo_color = Color(0.4, 0.4, 0.3)
-	mesh.material = material
+	# 1. Hull
+	var hull = BoxMesh.new()
+	hull.size = Vector3(2.8, 1.6, 5.0)
+	var hull_t = Transform3D.IDENTITY.translated(Vector3(0, 0.8, 0))
+	st.append_from(hull, 0, hull_t)
+	
+	# 2. Small Turret
+	var turret = CylinderMesh.new()
+	turret.top_radius = 0.6
+	turret.bottom_radius = 0.8
+	turret.height = 0.6
+	var turret_t = Transform3D.IDENTITY.translated(Vector3(0, 1.9, 0.5))
+	st.append_from(turret, 0, turret_t)
+
+	var mesh = st.commit()
+	
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.35, 0.35, 0.25) # Tan/Sand
+	mat.roughness = 0.8
+	mesh.surface_set_material(0, mat)
 	
 	return mesh
 
@@ -168,7 +209,13 @@ func _update_physics(delta: float) -> void:
 		var forward = Vector3(sin(rot.y), 0, cos(rot.y))
 		
 		var target_speed = input_throttles[i] * max_speed * move_speeds[i]
-		spd = move_toward(spd, target_speed, acceleration * delta)
+		
+		# Improved physics: Friction and Drag
+		if input_throttles[i] < 0.1:
+			# Apply strong friction when stopping
+			spd = move_toward(spd, 0.0, acceleration * 2.0 * delta)
+		else:
+			spd = move_toward(spd, target_speed, acceleration * delta)
 		
 		var turn_input = input_steers[i]
 		rot.y += turn_input * turn_speed * turn_speeds[i] * delta
@@ -186,7 +233,9 @@ func _update_physics(delta: float) -> void:
 
 func _update_rendering() -> void:
 	if not _camera:
-		return
+		_camera = get_viewport().get_camera_3d()
+		if not _camera:
+			return
 	
 	var cam_pos = _camera.global_position
 	
@@ -202,12 +251,13 @@ func _update_rendering() -> void:
 		var pos = positions[i]
 		var rot = rotations[i]
 		
-		var dist_sq = cam_pos.distance_squared_to(pos)
-		if dist_sq > LOD_MEDIUM_DIST_SQ:
-			continue
+		# Culling Check DISABLED due to visibility issues
+		# var dist_sq = cam_pos.distance_squared_to(pos)
+		# if dist_sq > LOD_MEDIUM_DIST_SQ:
+		# 	continue
 		
-		if not _is_in_frustum(pos):
-			continue
+		# if not _is_in_frustum(pos):
+		# 	continue
 		
 		var transform = Transform3D()
 		transform = transform.rotated(Vector3.UP, rot.y)
@@ -260,7 +310,7 @@ func spawn_vehicle(pos: Vector3, faction: GlobalEnums.Team, vtype: int = 0) -> i
 	velocities[idx] = Vector3.ZERO
 	rotations[idx] = Vector3(0, randf_range(0, TAU), 0)
 	speeds[idx] = 0.0
-	throttles[idx] = 0.0
+	throttles[idx] = 1.0 # Engine ON
 	healths[idx] = 100.0
 	teams[idx] = faction
 	states[idx] = 1

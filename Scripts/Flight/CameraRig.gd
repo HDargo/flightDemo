@@ -104,19 +104,23 @@ func _process(delta: float) -> void:
 		var t = 1.0 - exp(-smooth_speed * delta)
 		global_position = global_position.lerp(desired_pos, t)
 		
-		# Look at target
-		# Smooth look_at is tricky, simple look_at is okay for now, or slerp the basis.
-		# Let's look at a point slightly ahead of the target to anticipate movement
-		var look_target = target_pos + target_basis * Vector3(0, 0, -10)
+		# Look at target with ROLL synchronization
+		# Look at a point far ahead of the target to anticipate movement
+		var look_target = target_pos + target_basis * Vector3(0, 0, -20)
+		var look_dir = global_position.direction_to(look_target)
 		
-		# Smooth look using Basis slerp for better result than look_at every frame
-		var target_look_pos = global_position.direction_to(look_target)
-		if target_look_pos.length_squared() > 0.001:
-			var up = Vector3.UP
-			if abs(up.dot(target_look_pos)) > 0.99: up = Vector3.RIGHT
-			
-			var target_basis_look = Basis.looking_at(target_look_pos, up)
-			global_transform.basis = global_transform.basis.slerp(target_basis_look, t * 2.0)
+		# Use target's UP vector to align camera roll with aircraft roll
+		var target_up = target_basis.y
+		
+		# Robust Basis construction
+		if look_dir.length_squared() > 0.001:
+			# Prevent errors when look_dir is parallel to target_up
+			if abs(look_dir.dot(target_up)) < 0.99:
+				var target_basis_look = Basis.looking_at(look_dir, target_up)
+				global_transform.basis = global_transform.basis.slerp(target_basis_look, t * 2.0).orthonormalized()
+			else:
+				# Fallback if weird angle: just rotate to target basis directly
+				global_transform.basis = global_transform.basis.slerp(target_basis, t * 2.0).orthonormalized()
 
 	# --- Speed FX (FOV & Shake) ---
 	var speed = 0.0

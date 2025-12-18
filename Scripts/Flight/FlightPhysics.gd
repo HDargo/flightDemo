@@ -110,14 +110,39 @@ static func check_landing_conditions(
 	var dot = up_vector.dot(Vector3.UP)
 	return current_speed < speed_threshold and dot > angle_threshold
 
-## Calculate angle of attack (simplified)
+## Calculate angle of attack (signed)
 static func calculate_angle_of_attack(
 	velocity: Vector3,
-	forward: Vector3
+	forward: Vector3,
+	right: Vector3
 ) -> float:
 	if velocity.length_squared() < 0.01:
 		return 0.0
-	return rad_to_deg(acos(velocity.normalized().dot(forward)))
+	
+	var velocity_norm = velocity.normalized()
+	var dot = velocity_norm.dot(forward)
+	# Clamp dot to avoid NaN errors with acos
+	dot = clamp(dot, -1.0, 1.0)
+	
+	var angle = rad_to_deg(acos(dot))
+	
+	# Determine sign: is velocity above or below the forward vector?
+	# We project velocity onto the plane defined by forward and up (normal is right)
+	# Actually, simply checking dot product with Up vector is sufficient for pitch AOA
+	# But we need the local Up vector.
+	# Let's use the Triple Product or simply dot with Local Up.
+	# If velocity.dot(up) is negative, the wind is coming from above (diving/negative AOA)
+	# Wait, AOA is usually: Wind coming from below = Positive AOA.
+	# Velocity vector is where we are GOING.
+	# If we are going UP relative to nose, wind hits bottom => Positive AOA.
+	# So check velocity projected on Up vector.
+	
+	# Since we don't have Up vector passed in, we can compute it if Right is passed.
+	var up = right.cross(forward).normalized()
+	
+	if velocity_norm.dot(up) < 0:
+		return -angle
+	return angle
 
 ## Calculate stall factor based on angle of attack
 static func calculate_stall_factor(angle_of_attack: float) -> float:

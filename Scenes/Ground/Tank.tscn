@@ -1,17 +1,27 @@
-[gd_scene load_steps=5 format=3 uid="uid://cqv8ymh3xk7dq"]
+[gd_scene load_steps=8 format=3 uid="uid://cqv8ymh3xk7dq"]
 
-[ext_resource type="Script" path="res://Scripts/Ground/GroundVehicle.gd" id="1_tank"]
+[ext_resource type="Script" uid="uid://cenylgtxur4kr" path="res://Scripts/Ground/GroundVehicle.gd" id="1_tank"]
 [ext_resource type="Script" path="res://Scripts/Ground/GroundWeaponSystem.gd" id="2_weapon"]
-[ext_resource type="Script" path="res://Scripts/Ground/GroundAI.gd" id="3_ai"]
+[ext_resource type="Script" uid="uid://ctgx3chjp4u13" path="res://Scripts/Ground/GroundAI.gd" id="3_ai"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_tank"]
 size = Vector3(3, 2, 4)
 
+[sub_resource type="BoxMesh" id="BoxMesh_hull"]
+size = Vector3(3, 1.6, 5)
+
+[sub_resource type="SphereMesh" id="SphereMesh_turret"]
+radius = 1.0
+height = 2.0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_barrel"]
+top_radius = 0.15
+bottom_radius = 0.15
+height = 3.0
+
 [node name="Tank" type="CharacterBody3D"]
 collision_layer = 2
-collision_mask = 1
 script = ExtResource("1_tank")
-vehicle_type = 0
 max_speed = 15.0
 acceleration = 3.0
 turn_speed = 1.0
@@ -26,18 +36,18 @@ shape = SubResource("BoxShape3D_tank")
 
 [node name="Hull" type="MeshInstance3D" parent="Visual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
-mesh = BoxMesh
+mesh = SubResource("BoxMesh_hull")
 skeleton = NodePath("../..")
 
 [node name="Turret" type="Node3D" parent="Visual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
 [node name="TurretMesh" type="MeshInstance3D" parent="Visual/Turret"]
-mesh = SphereMesh
+mesh = SubResource("SphereMesh_turret")
 
 [node name="Barrel" type="MeshInstance3D" parent="Visual/Turret"]
 transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 2, 0, 0, -2)
-mesh = CylinderMesh
+mesh = SubResource("CylinderMesh_barrel")
 
 [node name="WeaponSystem" type="Node" parent="."]
 script = ExtResource("2_weapon")

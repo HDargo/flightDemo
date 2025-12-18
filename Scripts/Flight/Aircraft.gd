@@ -16,14 +16,14 @@ var weapon_system: Node = null
 # Settings
 @export var max_speed: float = 50.0
 @export var min_speed: float = 10.0  # Minimum flight speed to maintain lift
-@export var acceleration: float = 20.0
-@export var drag_factor: float = 0.01
+@export var acceleration: float = 60.0 # High thrust for arcade feel
+@export var drag_factor: float = 0.006 # Balanced drag
 @export var turn_speed: float = 2.0
 @export var pitch_speed: float = 2.0
 @export var roll_speed: float = 3.0
 @export var pitch_acceleration: float = 5.0
 @export var roll_acceleration: float = 5.0
-@export var lift_factor: float = 0.05  # Reduced for speed^2 formula
+@export var lift_factor: float = 0.00178  # Calculated: 0.0082 / 4.6 to normalize 464% lift to ~100%
 @export var mouse_sensitivity: float = 0.002
 @export var fire_rate: float = 0.1
 @export var missile_lock_range: float = 2000.0
@@ -131,8 +131,12 @@ func _ready() -> void:
 				print("[Aircraft] Player aircraft registered (delayed): ", get_instance_id())
 			
 	recalculate_performance_factors()
-	# current_speed = min_speed
-	current_speed = 10.0
+	
+	# Initialize Physics State
+	throttle = 1.0 # Start at full power
+	current_speed = 60.0 # Start with good flight speed
+	velocity = -global_transform.basis.z * current_speed
+	
 	if is_player:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		add_to_group("player")
@@ -174,7 +178,7 @@ func _setup_physics_layers() -> void:
 
 
 func calculate_physics(delta: float) -> void:
-	# CPU-based physics calculation (replaces GPU compute shader)
+	# CPU-based physics calculation (New Vector-based Physics)
 	
 	# Wing destroyed - dramatic crash sequence
 	if _wing_destroyed:
@@ -182,7 +186,6 @@ func calculate_physics(delta: float) -> void:
 		
 		# Force throttle to 0 during crash
 		throttle = 0.0
-		current_speed = max(min_speed * 0.3, current_speed - acceleration * delta * 3.0)
 		
 		# Apply crash rotation using FlightPhysics
 		global_transform.basis = FlightPhysics.calculate_crash_rotation(
@@ -194,94 +197,131 @@ func calculate_physics(delta: float) -> void:
 			delta
 		)
 		
-		# Calculate horizontal velocity using FlightPhysics
-		var forward = -global_transform.basis.z
-		var horizontal_velocity = FlightPhysics.calculate_crash_horizontal_velocity(forward, current_speed)
+		# Simply let gravity and drag take over in the main vector logic below?
+		# For dramatic effect, we might want explicit crash physics, but let's try to unify.
+		# For now, keep the spin but use the vector physics for movement.
+		# Just apply a chaotic force or simply let the bad aerodynamics (lift loss) do the work.
 		
-		# Keep existing vertical velocity and add gravity
-		velocity.x = horizontal_velocity.x
-		velocity.z = horizontal_velocity.z
-		velocity.y -= 19.6 * delta  # Double gravity - accumulates each frame
+		# BUT existing crash logic was specific. Let's adapt it to vector physics.
+		# Add gravity and drag manually here or fall through?
+		# Let's fall through to the main physics block but with modified parameters (Zero Lift).
+		pass # Logic continues below
 		
-		# Auto-destroy if falling too long or hit ground level
-		if _crash_timer > 8.0 or global_position.y < 5.0:
-			die()
-		
-		# Don't execute normal flight physics when crashing
 	else:
-		# Normal flight physics
-		# Throttle adjustment - only change if input is given
+		# Throttle adjustment
 		if input_throttle_up:
 			throttle = min(throttle + delta, 1.0)
 		elif input_throttle_down:
 			throttle = max(throttle - delta, 0.0)
-		# If no input, maintain current throttle
-		
-		# Speed control using FlightPhysics
-		var target_speed = FlightPhysics.calculate_target_speed(throttle, min_speed, max_speed, _c_engine_factor)
-		current_speed = FlightPhysics.smooth_approach(current_speed, target_speed, acceleration * _c_engine_factor, delta)
-		
-		# Drag
-		var drag = FlightPhysics.calculate_drag(current_speed, drag_factor, delta)
-		current_speed = max(min_speed, current_speed - drag)
-		
-		# Pitch control with damage
+			
+		# Pitch control
 		var pitch_input_adjusted = input_pitch * _c_h_tail_factor
 		current_pitch = FlightPhysics.smooth_approach(current_pitch, pitch_input_adjusted, pitch_acceleration, delta)
 		
-		# Roll control with damage
+		# Roll control
 		var roll_input_adjusted = input_roll * _c_roll_authority
 		var roll_bias = _c_wing_imbalance * 2.0
 		current_roll = FlightPhysics.smooth_approach(current_roll, roll_input_adjusted + roll_bias, roll_acceleration, delta)
 		
-		# Apply rotation using FlightPhysics
+		# Apply Basis Rotation (Orientation)
 		var current_basis = global_transform.basis
 		current_basis = FlightPhysics.apply_pitch_rotation(current_basis, current_pitch, pitch_speed, delta)
 		current_basis = FlightPhysics.apply_roll_rotation(current_basis, current_roll, roll_speed, delta)
 		current_basis = current_basis.orthonormalized()
 		global_transform.basis = current_basis
+	
+	# --- VECTOR PHYSICS ENGINE ---
+	
+	var forward = -global_transform.basis.z
+	var up = global_transform.basis.y
+	var right = global_transform.basis.x
+	
+	# Current State
+	current_speed = velocity.length()
+	var vel_dir = velocity.normalized() if current_speed > 0.01 else forward
+	
+	# 1. Gravity (Adjusted)
+	var gravity_accel = Vector3(0, -9.8, 0)  # Standard gravity
+	if _wing_destroyed:
+		gravity_accel = Vector3(0, -19.6, 0) # Fall faster if destroyed
+	
+	# 2. Thrust (Forward)
+	# Acceleration provides force. F = ma. Assuming mass=1.
+	var thrust_accel = forward * throttle * acceleration * _c_engine_factor
+	if _wing_destroyed: thrust_accel = Vector3.ZERO
+	
+	# 3. Drag (Opposite to Velocity)
+	# Drag = Coeff * Speed^2
+	var drag_magnitude = drag_factor * current_speed * current_speed
+	if _wing_destroyed:
+		drag_magnitude *= 5.0 # Massive drag from debris/spinning
 		
-		# Lift force
-		var forward = -global_transform.basis.z
-		var up = global_transform.basis.y
+	var drag_accel = -vel_dir * drag_magnitude
+	
+	# 4. Lift (Local Up, perpendicular to airflow)
+	# Lift = Coeff * Speed^2 * AOA_Factor
+	# Calculate Angle of Attack (AOA)
+	var aoa = FlightPhysics.calculate_angle_of_attack(velocity, forward, right)
+	var abs_aoa = abs(aoa)
+	var stall_factor = FlightPhysics.calculate_stall_factor(abs_aoa)
+	
+	# Realistic Lift Calculation:
+	# Lift is proportional to AOA (Linear aerodynamics approximation)
+	# Curve: Linear up to 15 degrees, then drops off (Stall)
+	var critical_aoa = 15.0
+	# Wing Incidence: +4.5 degrees
+	# Note: Model has 30° tilt, compensated by very low lift_factor
+	var effective_aoa = aoa + 4.5
+	var lift_coefficient = clamp(effective_aoa / critical_aoa, -1.0, 1.0)
+	
+	# Apply stall factor (reduces lift past critical angle)
+	var final_lift_mult = lift_coefficient * stall_factor
+	
+	# Calculate Lift Force Vector
+	# Target: Slight pitch (3-6 degrees) for level flight
+	# At level (aoa=0): effective_aoa = 4.5, lift_coeff = 0.3
+	# At 40m/s: Lift = 0.0082 × 1600 × 0.3 = 3.94 m/s² (40% of gravity)
+	# At 40m/s + pitch 6°: effective_aoa ≈ 10.5°, lift_coeff = 0.7
+	#   Lift = 0.0082 × 1600 × 0.7 = 9.18 m/s² (94% gravity - near level)
+	# At 40m/s + pitch 8°: ≈ 11 m/s² (climb)
+	
+	var lift_magnitude = lift_factor * current_speed * current_speed * final_lift_mult * _c_lift_factor
+	
+	# Lift acts perpendicular to velocity (roughly Up vector)
+	var lift_accel = up * lift_magnitude
+	
+	# Apply Forces
+	# velocity += acceleration * delta
+	velocity += (gravity_accel + thrust_accel + drag_accel + lift_accel) * delta
+	
+	# Update current_speed for logic references
+	current_speed = velocity.length()
+	
+	# Emit physics info for HUD (only for player)
+	if is_player:
+		emit_signal("physics_updated", current_speed, global_position.y, velocity.y, aoa, stall_factor)
 		
-		# Calculate angle of attack (받음각)
-		var aoa = FlightPhysics.calculate_angle_of_attack(velocity, forward)
-		var stall_factor = FlightPhysics.calculate_stall_factor(aoa)
+		# DEBUG: Display level flight status
+		var pitch_angle = rad_to_deg(asin(clamp(-forward.y, -1.0, 1.0)))  # Pitch angle in degrees
+		var climb_rate = velocity.y  # Vertical speed
+		var lift_to_gravity_ratio = lift_magnitude / 9.8
+		var is_level = abs(pitch_angle) < 5.0 and abs(climb_rate) < 2.0
 		
-		# Lift calculation with stall factor
-		var lift = FlightPhysics.calculate_lift(current_speed, lift_factor * stall_factor, _c_lift_factor, up)
-		
-		# DEBUG: Print physics values
-		if is_player and int(Time.get_ticks_msec() / 1000.0) != _last_debug_second:
-			_last_debug_second = int(Time.get_ticks_msec() / 1000.0)
-			print("=== PHYSICS DEBUG ===")
-			print("Speed: %.1f | Throttle: %.1f%%" % [current_speed, throttle * 100])
-			print("Lift: %s (%.2f)" % [lift, lift.length()])
-			print("Up: %s (y=%.2f)" % [up, up.y])
-			print("Forward: %s" % forward)
-			print("AOA: %.1f° | Stall: %.2f" % [aoa, stall_factor])
-		
-		# Update velocity (ORIGINAL WORKING METHOD)
-		# Velocity = forward motion + lift force
-		velocity = forward * current_speed + lift * delta
-		
-		# Apply gravity
-		velocity.y -= 9.8 * delta
-		
-		# DEBUG
-		if is_player and _last_debug_second == int(Time.get_ticks_msec() / 1000.0):
-			print("Velocity: %s (%.2f)" % [velocity, velocity.length()])
-			print("Velocity.y: %.2f" % velocity.y)
-		
-		# Emit physics info for HUD (only for player)
-		if is_player:
-			emit_signal("physics_updated", current_speed, global_position.y, velocity.y, aoa, stall_factor)
-		
-		# Stall warning for player
-		if is_player and stall_factor < 0.8:
-			if randf() < 0.1:  # Occasional warning
-				print("[WARNING] STALL! Angle of Attack: %.1f degrees" % aoa)
+		print("[FLIGHT] Speed: %.1f m/s | Pitch: %.1f° | AOA: %.1f° | Eff.AOA: %.1f° | Lift: %.2f m/s² (%.0f%% gravity) | Climb: %.1f m/s | Level: %s" % [
+			current_speed,
+			pitch_angle,
+			aoa,
+			effective_aoa,
+			lift_magnitude,
+			lift_to_gravity_ratio * 100.0,
+			climb_rate,
+			"YES" if is_level else "NO"
+		])
+	
+	# Stall warning for player
+	if is_player and stall_factor < 0.8:
+		if randf() < 0.01:  # Very occasional warning
+			pass # print("[WARNING] STALL! Angle of Attack: %.1f degrees" % aoa)
 
 func _physics_process(delta: float) -> void:
 	# CRITICAL: Prevent duplicate calls from inherited scenes
@@ -315,7 +355,7 @@ func _physics_process(delta: float) -> void:
 		_performance_dirty = false
 	
 	# Update input from InputHandler (if player)
-	if is_player and input_handler:
+	if is_player and is_instance_valid(input_handler):
 		input_handler.process_input()
 		input_pitch = input_handler.input_pitch
 		input_roll = input_handler.input_roll
@@ -338,10 +378,6 @@ func _physics_process(delta: float) -> void:
 	if is_player or is_crashing or global_position.y < safe_altitude:
 		move_and_slide()
 		
-		# DEBUG: Ground collision check
-		if is_player and global_position.y < 10.0:
-			print("[Aircraft] Low altitude: %.1f | Collisions: %d" % [global_position.y, get_slide_collision_count()])
-		
 		if get_slide_collision_count() > 0:
 			_handle_collision(delta)
 	else:
@@ -352,14 +388,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _handle_collision(_delta: float) -> void:
-	if is_player:
-		print("[Aircraft] COLLISION DETECTED! Count: %d" % get_slide_collision_count())
-	
 	for i in range(get_slide_collision_count()):
 		var collision = get_slide_collision(i)
-		
-		if is_player:
-			print("  Collision %d: %s at %s" % [i, collision.get_collider(), collision.get_position()])
 		
 		# Landing conditions: Low speed, flat angle
 		var is_landing = FlightPhysics.check_landing_conditions(
@@ -367,18 +397,11 @@ func _handle_collision(_delta: float) -> void:
 			transform.basis.y
 		)
 		
-		if is_player:
-			print("  Speed: %.1f | Is Landing: %s" % [current_speed, is_landing])
-		
 		if is_landing:
 			# Safe landing, stop
 			current_speed *= 0.95
-			if is_player:
-				print("  → LANDING (speed reduced)")
 		else:
 			# Crash!
-			if is_player:
-				print("  → CRASH! Destroying aircraft...")
 			die()
 
 # Debug helper functions for InputHandler
@@ -451,6 +474,10 @@ func break_part(part: String) -> void:
 func die() -> void:
 	print("Aircraft destroyed!")
 	
+	# Stop processing immediately to prevent errors
+	set_process(false)
+	set_physics_process(false)
+	
 	if is_player:
 		var cam = get_node_or_null("CameraRig")
 		if cam:
@@ -470,15 +497,28 @@ var _physics_call_count: int = 0
 var _physics_call_timer: float = 0.0
 
 func _process(delta: float) -> void:
+	# CRITICAL: Validity check to prevent "previously freed instance" errors
+	if not is_instance_valid(self) or is_queued_for_deletion():
+		return
+	
+	if not is_instance_valid(weapon_system):
+		return
+
 	# Process weapons through weapon system
-	if weapon_system:
+	if is_instance_valid(weapon_system):
 		weapon_system.process_weapons(delta, input_fire, input_missile)
 		
 		# Update locked target reference
-		locked_target = weapon_system.locked_target
-		last_fire_time = weapon_system.last_fire_time
-		last_missile_time = weapon_system.last_missile_time
+		if is_instance_valid(weapon_system):
+			var potential_target = weapon_system.locked_target
+			if is_instance_valid(potential_target):
+				locked_target = potential_target
+			else:
+				locked_target = null
+				
+			last_fire_time = weapon_system.last_fire_time
+			last_missile_time = weapon_system.last_missile_time
 	
 	# Player-only: target search
-	if is_player and weapon_system:
+	if is_player and is_instance_valid(weapon_system):
 		weapon_system.process_target_search(delta)

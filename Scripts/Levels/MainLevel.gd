@@ -14,7 +14,7 @@ extends Node3D
 
 # Ground vehicle settings (NEW)
 @export_group("Ground Vehicles")
-@export var spawn_ground_vehicles: bool = false
+@export var spawn_ground_vehicles: bool = true
 @export var ground_vehicle_scene: PackedScene
 @export var ally_ground_count: int = 20
 @export var enemy_ground_count: int = 20
@@ -46,8 +46,6 @@ func _ready() -> void:
 	# Initialize Ground System if needed
 	if spawn_ground_vehicles:
 		ground_system = MassGroundSystem.new()
-		ground_system.ground_vehicle_scene = ground_vehicle_scene
-		ground_system.max_vehicles = ally_ground_count + enemy_ground_count
 		add_child(ground_system)
 	
 	# Use exclusive fullscreen for better performance and true fullscreen experience
