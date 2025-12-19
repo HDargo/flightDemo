@@ -11,7 +11,7 @@ var ai_controllers: Array[Node] = []
 var mass_aircraft_system: MassAircraftSystem
 var mass_ai_system: MassAISystem
 var mass_ground_system: MassGroundSystem
-var use_mass_system: bool = false  # Toggle for testing
+var use_mass_system: bool = false # Toggle for testing
 
 # Spatial optimization
 var spatial_grid: SpatialGrid
@@ -20,7 +20,7 @@ var spatial_grid: SpatialGrid
 var _aircraft_data_map: Dictionary = {}
 var _allies_list: Array[Dictionary] = []
 var _enemies_list: Array[Dictionary] = []
-var _team_lists_dirty: bool = true  # Flag to rebuild team lists only when needed
+var _team_lists_dirty: bool = true # Flag to rebuild team lists only when needed
 var _frame_count: int = 0
 var _ai_task_group_id: int = -1
 var _thread_count: int = 1
@@ -165,7 +165,7 @@ func spawn_projectile(tf: Transform3D) -> void:
 	else:
 		p = _projectile_pool.pop_back()
 	
-	var forward = -tf.basis.z
+	var forward = - tf.basis.z
 	p.position = tf.origin
 	p.velocity = forward * 200.0
 	p.life = 2.0
@@ -175,13 +175,13 @@ func spawn_projectile(tf: Transform3D) -> void:
 	# Calculate basis for projectile orientation
 	# Safety check: Ensure forward is valid
 	if forward.is_zero_approx() or not forward.is_normalized():
-		forward = -Vector3.FORWARD
+		forward = - Vector3.FORWARD
 	
 	var up = Vector3.UP
 	var forward_dot = abs(forward.y)
 	if forward_dot > 0.99:
 		up = Vector3.RIGHT
-	p.basis = Basis.looking_at(forward, up).rotated(Vector3.RIGHT, -PI/2)
+	p.basis = Basis.looking_at(forward, up).rotated(Vector3.RIGHT, -PI / 2)
 	
 	_projectile_data.append(p)
 	
@@ -253,26 +253,13 @@ func _physics_process(delta: float) -> void:
 	_update_cache()
 	
 	# Start AI processing less frequently (every 3 physics frames for better performance)
+	# Start AI processing
 	var ai_count = ai_controllers.size()
-	if ai_count > 0 and (_frame_count % 3) == 0:
-		# Wait for previous AI tasks only if they exist (moved here to avoid blocking early)
-		if _ai_task_group_id != -1:
-			WorkerThreadPool.wait_for_group_task_completion(_ai_task_group_id)
-			_ai_task_group_id = -1
-		
-		# Limit max AI updates per frame to prevent performance spikes
-		# Reduced limit for better frame stability
-		var max_ai_per_frame = min(ai_count, max(5, aircraft_count / 2))
-		var ai_to_process = min(ai_count, max_ai_per_frame)
-		
-		var task_count = min(ai_to_process, _thread_count)
-		_ai_task_group_id = WorkerThreadPool.add_group_task(
-			_process_ai_batch.bind(delta * 3.0, ai_to_process, task_count),  # delta * 3 because we skip frames
-			task_count,
-			-1,
-			true,
-			"AI Logic"
-		)
+	if ai_count > 0:
+		# Process AI synchronously to prevent data races with spatial grid and cache
+		# We process ALL AI controllers to ensure no one is left behind
+		# Distance-based skipping is handled inside _process_ai_batch
+		_process_ai_batch(0, delta, ai_count, 1)
 	
 	# Projectile Movement
 	var proj_count = _projectile_data.size()
@@ -364,22 +351,18 @@ func _update_cache() -> void:
 		var id = a.get_instance_id()
 		var data = _aircraft_data_map.get(id)
 		
-		# Always update player and on update_all frames, or create initial data
-		var should_update_transform = update_all or a.is_player or not data
+		# Always update position for SpatialGrid accuracy
+		var current_pos = a.global_position
+		_aircraft_positions[i] = current_pos
+		spatial_grid.insert(i, current_pos)
 		
-		if should_update_transform:
-			var tf = a.global_transform  # Only access when needed
-			
-			# Cache position for thread-safe access
-			_aircraft_positions[i] = tf.origin
-			
-			# Insert into spatial grid
-			spatial_grid.insert(i, _aircraft_positions[i])
-			
+		# Update other data every 3 frames or if new
+		var should_update_data = update_all or a.is_player or not data
+		
+		if should_update_data:
 			if data:
-				# Update existing data
-				data.pos = _aircraft_positions[i]
-				data.transform = tf
+				data.pos = current_pos
+				data.transform = a.global_transform
 				data.vel = a.velocity
 				data.team = a.team
 				data.index = i
@@ -388,15 +371,14 @@ func _update_cache() -> void:
 				data = {
 					"ref": a,
 					"id": id,
-					"pos": tf.origin,
-					"transform": tf,
+					"pos": current_pos,
+					"transform": a.global_transform,
 					"team": a.team,
 					"vel": a.velocity,
 					"index": i
 				}
 				_aircraft_data_map[id] = data
 				_team_lists_dirty = true
-				_aircraft_positions[i] = tf.origin
 	
 	# Only rebuild team lists when needed (on aircraft add/remove or team change)
 	if _team_lists_dirty:
@@ -413,10 +395,7 @@ func _update_cache() -> void:
 		
 		_team_lists_dirty = false
 
-func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_tasks: int) -> void:
-	var start_idx = int(float(task_idx * total_items) / total_tasks)
-	var end_idx = int(float((task_idx + 1) * total_items) / total_tasks)
-	
+func _process_ai_batch(_task_idx: int, delta: float, total_items: int, _total_tasks: int) -> void:
 	# Get player position from cached positions (thread-safe)
 	var player_pos = Vector3.ZERO
 	var has_player = false
@@ -426,40 +405,29 @@ func _process_ai_batch(task_idx: int, delta: float, total_items: int, total_task
 			has_player = true
 			break
 	
-	# Track AI updates per frame to ensure we don't exceed limits
-	var ai_calls_this_batch = 0
-	var max_calls = end_idx - start_idx
-	
-	for i in range(start_idx, min(end_idx, total_items)):
+	# Process ALL items in this batch (synchronous now)
+	for i in range(total_items):
 		var ai = ai_controllers[i]
 		if not is_instance_valid(ai) or not is_instance_valid(ai.aircraft):
 			continue
 		
 		# Distance-based update frequency using cached positions
-		var update_interval = 8  # Default: every 8 frames
+		var update_interval = 4 # Default: every 4 frames
 		if has_player:
-			# Use cached aircraft index instead of find()
 			var aircraft_idx = ai.my_aircraft_index
 			if aircraft_idx != -1 and aircraft_idx < _aircraft_positions.size():
 				var dist_sq = _aircraft_positions[aircraft_idx].distance_squared_to(player_pos)
-				if dist_sq < 250000:  # < 500m: every 2 frames
+				if dist_sq < 1000000: # < 1000m: every frame for max responsiveness
+					update_interval = 1
+				elif dist_sq < 4000000: # < 2000m: every 2 frames
 					update_interval = 2
-				elif dist_sq < 1000000:  # < 1000m: every 4 frames
+				else: # > 2000m: every 4 frames
 					update_interval = 4
-				elif dist_sq < 4000000:  # < 2000m: every 8 frames
-					update_interval = 8
-				else:  # > 2000m: every 16 frames
-					update_interval = 16
 		
 		if (i + _frame_count) % update_interval != 0:
 			continue
 		
 		ai.process_ai(delta * update_interval)
-		ai_calls_this_batch += 1
-		
-		# Safety limit: never process more AIs than allocated in this batch
-		if ai_calls_this_batch >= max_calls:
-			break
 
 func _process_mass_system(delta: float) -> void:
 	if not mass_aircraft_system or not mass_ai_system:
@@ -495,7 +463,7 @@ func destroy_mass_aircraft(index: int) -> void:
 	
 	mass_aircraft_system.destroy_aircraft(index)
 
-func spawn_formation(center: Vector3, team: int, count: int, spacing: float = 50.0) -> void:
+func spawn_formation(center: Vector3, team: int, count: int, spacing: float = 50.0, rotation: Vector3 = Vector3.ZERO) -> void:
 	# Spawn aircraft in V-formation
 	for i in range(count):
 		var row = i / 5
@@ -503,8 +471,8 @@ func spawn_formation(center: Vector3, team: int, count: int, spacing: float = 50
 		
 		var offset = Vector3(
 			(col - 2) * spacing,
-			-row * spacing * 0.5,
-			-row * spacing
+			row * 2.0, # Slight upward stagger instead of diving down
+			- row * spacing
 		)
 		
-		spawn_mass_aircraft(center + offset, team)
+		spawn_mass_aircraft(center + offset, team, rotation)

@@ -15,15 +15,15 @@ var weapon_system: Node = null
 
 # Settings
 @export var max_speed: float = 50.0
-@export var min_speed: float = 10.0  # Minimum flight speed to maintain lift
-@export var acceleration: float = 60.0 # High thrust for arcade feel
+@export var min_speed: float = 10.0 # Minimum flight speed to maintain lift
+@export var acceleration: float = 90.0 # Increased by 50% (was 60.0)
 @export var drag_factor: float = 0.006 # Balanced drag
 @export var turn_speed: float = 2.0
 @export var pitch_speed: float = 2.0
 @export var roll_speed: float = 3.0
 @export var pitch_acceleration: float = 5.0
 @export var roll_acceleration: float = 5.0
-@export var lift_factor: float = 0.00178  # Calculated: 0.0082 / 4.6 to normalize 464% lift to ~100%
+@export var lift_factor: float = 0.00178 # Calculated: 0.0082 / 4.6 to normalize 464% lift to ~100%
 @export var mouse_sensitivity: float = 0.002
 @export var fire_rate: float = 0.1
 @export var missile_lock_range: float = 2000.0
@@ -118,7 +118,6 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	# Physics process is enabled by default for CharacterBody3D
-	
 	# Setup components FIRST
 	_setup_components()
 	
@@ -135,7 +134,7 @@ func _ready() -> void:
 	# Initialize Physics State
 	throttle = 1.0 # Start at full power
 	current_speed = 60.0 # Start with good flight speed
-	velocity = -global_transform.basis.z * current_speed
+	velocity = - global_transform.basis.z * current_speed
 	
 	if is_player:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
@@ -167,19 +166,18 @@ func _setup_components() -> void:
 
 func _setup_physics_layers() -> void:
 	if is_player:
-		collision_layer = 1  # Layer 1 (player)
-		collision_mask = 4 | 8  # Layer 3 (enemy) + Layer 4 (ground)
+		collision_layer = 1 # Layer 1 (player)
+		collision_mask = 4 | 8 # Layer 3 (enemy) + Layer 4 (ground)
 	elif team == GlobalEnums.Team.ALLY:
-		collision_layer = 2  # Layer 2 (ally)
-		collision_mask = 4 | 8  # Layer 3 (enemy) + Layer 4 (ground)
+		collision_layer = 2 # Layer 2 (ally)
+		collision_mask = 4 | 8 # Layer 3 (enemy) + Layer 4 (ground)
 	elif team == GlobalEnums.Team.ENEMY:
-		collision_layer = 4  # Layer 3 (enemy)
-		collision_mask = 1 | 2 | 8  # Layer 1 (player) + Layer 2 (ally) + Layer 4 (ground)
+		collision_layer = 4 # Layer 3 (enemy)
+		collision_mask = 1 | 2 | 8 # Layer 1 (player) + Layer 2 (ally) + Layer 4 (ground)
 
 
 func calculate_physics(delta: float) -> void:
 	# CPU-based physics calculation (New Vector-based Physics)
-	
 	# Wing destroyed - dramatic crash sequence
 	if _wing_destroyed:
 		_crash_timer += delta
@@ -232,7 +230,7 @@ func calculate_physics(delta: float) -> void:
 	
 	# --- VECTOR PHYSICS ENGINE ---
 	
-	var forward = -global_transform.basis.z
+	var forward = - global_transform.basis.z
 	var up = global_transform.basis.y
 	var right = global_transform.basis.x
 	
@@ -241,7 +239,7 @@ func calculate_physics(delta: float) -> void:
 	var vel_dir = velocity.normalized() if current_speed > 0.01 else forward
 	
 	# 1. Gravity (Adjusted)
-	var gravity_accel = Vector3(0, -9.8, 0)  # Standard gravity
+	var gravity_accel = Vector3(0, -9.8, 0) # Standard gravity
 	if _wing_destroyed:
 		gravity_accel = Vector3(0, -19.6, 0) # Fall faster if destroyed
 	
@@ -256,7 +254,7 @@ func calculate_physics(delta: float) -> void:
 	if _wing_destroyed:
 		drag_magnitude *= 5.0 # Massive drag from debris/spinning
 		
-	var drag_accel = -vel_dir * drag_magnitude
+	var drag_accel = - vel_dir * drag_magnitude
 	
 	# 4. Lift (Local Up, perpendicular to airflow)
 	# Lift = Coeff * Speed^2 * AOA_Factor
@@ -301,26 +299,9 @@ func calculate_physics(delta: float) -> void:
 	if is_player:
 		emit_signal("physics_updated", current_speed, global_position.y, velocity.y, aoa, stall_factor)
 		
-		# DEBUG: Display level flight status
-		var pitch_angle = rad_to_deg(asin(clamp(-forward.y, -1.0, 1.0)))  # Pitch angle in degrees
-		var climb_rate = velocity.y  # Vertical speed
-		var lift_to_gravity_ratio = lift_magnitude / 9.8
-		var is_level = abs(pitch_angle) < 5.0 and abs(climb_rate) < 2.0
-		
-		print("[FLIGHT] Speed: %.1f m/s | Pitch: %.1f° | AOA: %.1f° | Eff.AOA: %.1f° | Lift: %.2f m/s² (%.0f%% gravity) | Climb: %.1f m/s | Level: %s" % [
-			current_speed,
-			pitch_angle,
-			aoa,
-			effective_aoa,
-			lift_magnitude,
-			lift_to_gravity_ratio * 100.0,
-			climb_rate,
-			"YES" if is_level else "NO"
-		])
-	
 	# Stall warning for player
 	if is_player and stall_factor < 0.8:
-		if randf() < 0.01:  # Very occasional warning
+		if randf() < 0.01: # Very occasional warning
 			pass # print("[WARNING] STALL! Angle of Attack: %.1f degrees" % aoa)
 
 func _physics_process(delta: float) -> void:
@@ -331,7 +312,7 @@ func _physics_process(delta: float) -> void:
 	
 	# CRITICAL: Prevent physics death spiral
 	# If delta is too large, skip this frame to catch up
-	if delta > 0.1:  # More than 100ms per frame = severe lag
+	if delta > 0.1: # More than 100ms per frame = severe lag
 		push_warning("[Aircraft] Skipping physics frame due to severe lag (delta: %.3f)" % delta)
 		return
 	
@@ -384,7 +365,6 @@ func _physics_process(delta: float) -> void:
 		# Simple movement for AI in safe zone (High altitude)
 		# This is much cheaper than move_and_slide()
 		global_position += velocity * delta
-
 
 
 func _handle_collision(_delta: float) -> void:

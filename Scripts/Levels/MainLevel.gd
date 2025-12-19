@@ -8,7 +8,7 @@ extends Node3D
 
 # Mass system settings (NEW)
 @export_group("Mass System")
-@export var use_mass_system: bool = false  # Toggle between legacy and mass system
+@export var use_mass_system: bool = false # Toggle between legacy and mass system
 @export var mass_ally_count: int = 500
 @export var mass_enemy_count: int = 500
 
@@ -32,7 +32,7 @@ var _startup_delay: float = 2.0
 
 # Spawn Queue System (legacy)
 var _spawn_queue: Array = []
-var _spawn_per_frame: int = 5  # Reduced from 10 to prevent lag spikes
+var _spawn_per_frame: int = 5 # Reduced from 10 to prevent lag spikes
 var _is_spawning: bool = false
 
 func _ready() -> void:
@@ -137,7 +137,7 @@ func _process(delta: float) -> void:
 		if _spawn_queue.size() == 0:
 			_is_spawning = false
 			if hud:
-				hud.hide_game_over()  # Hide loading message
+				hud.hide_game_over() # Hide loading message
 		return
 	
 	if game_over: return
