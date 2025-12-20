@@ -4,7 +4,7 @@ class_name CameraRig
 
 @export var target_path: NodePath
 @export var smooth_speed: float = 5.0
-@export var chase_offset: Vector3 = Vector3(0, 2, 6)
+@export var chase_offset: Vector3 = Vector3(0, 3.5, 12.0)
 @export var cockpit_offset: Vector3 = Vector3(0, 0.8, -0.5)
 
 # Speed FX

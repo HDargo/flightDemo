@@ -413,6 +413,9 @@ func take_damage(amount: float, hit_pos_local: Vector3) -> void:
 		parts_health[part] = max(0, parts_health[part] - amount)
 		print("  → New health: %.1f" % parts_health[part])
 		
+		# Update visual darkening
+		_update_part_visuals(part)
+		
 		_performance_dirty = true
 		
 		if parts_health[part] <= 0:
@@ -422,6 +425,37 @@ func take_damage(amount: float, hit_pos_local: Vector3) -> void:
 		if DamageSystem.check_critical_damage(parts_health):
 			print("  → CRITICAL DAMAGE - Aircraft destroyed!")
 			die()
+
+func _update_part_visuals(part: String) -> void:
+	var node_name = DamageSystem.get_part_node_name(part)
+	if node_name == "" or not has_node(node_name):
+		return
+		
+	var node = get_node(node_name)
+	if not node is MeshInstance3D and not node is CSGPrimitive3D:
+		return
+		
+	var health_ratio = parts_health[part] / max_part_healths[part]
+	# Darken the part: 1.0 health = white (original), 0.0 health = black/very dark
+	# We use a color multiplier or direct albedo color.
+	var color_val = 0.2 + (health_ratio * 0.8) # Don't go completely pitch black
+	var damage_color = Color(color_val, color_val, color_val)
+	
+	# Get material and make unique if not already
+	var mat = node.get_active_material(0)
+	if mat:
+		# Important: Check if it's already a unique copy (we can tag it or just duplicate once)
+		# For simplicity, we duplicate it if it's the first time this part is hit
+		if not mat.resource_local_to_scene:
+			mat = mat.duplicate()
+			node.set_surface_override_material(0, mat)
+		
+		if mat is StandardMaterial3D:
+			mat.albedo_color = damage_color
+		elif mat is ShaderMaterial:
+			# If using a shader, we assume it has an albedo or tint parameter
+			mat.set_shader_parameter("albedo", damage_color)
+			mat.set_shader_parameter("tint", damage_color)
 
 func break_part(part: String) -> void:
 	var explosion_scene = preload("res://Scenes/Effects/Explosion.tscn")

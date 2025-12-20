@@ -53,6 +53,14 @@ func _ready() -> void:
 	
 	if aircraft and hud:
 		hud.set_aircraft(aircraft)
+		# Position player in the South (Ally side) facing North
+		aircraft.global_position = Vector3(0, 400, spawn_radius + 200.0)
+		aircraft.rotation_degrees = Vector3.ZERO
+		# Ensure player starts with some speed
+		if "current_speed" in aircraft:
+			aircraft.current_speed = aircraft.max_speed * 0.8
+		if "throttle" in aircraft:
+			aircraft.throttle = 0.8
 	
 	# Choose spawn method based on use_mass_system
 	if use_mass_system:
@@ -85,13 +93,15 @@ func _spawn_mass_aircraft() -> void:
 	
 	FlightManager.instance.use_mass_system = true
 	
-	# Spawn allies in formation
-	var ally_center = Vector3(-spawn_radius * 0.5, 400, 200)
-	FlightManager.instance.spawn_formation(ally_center, GlobalEnums.Team.ALLY, mass_ally_count, 50.0)
+	# Spawn allies in formation (South Side, Facing North)
+	# Z > 0 is South. Facing North means facing -Z (Rotation 0).
+	var ally_center = Vector3(0, 400, spawn_radius)
+	FlightManager.instance.spawn_formation(ally_center, GlobalEnums.Team.ALLY, mass_ally_count, 50.0, Vector3.ZERO)
 	
-	# Spawn enemies in formation
-	var enemy_center = Vector3(spawn_radius * 0.5, 450, -500)
-	FlightManager.instance.spawn_formation(enemy_center, GlobalEnums.Team.ENEMY, mass_enemy_count, 50.0)
+	# Spawn enemies in formation (North Side, Facing South)
+	# Z < 0 is North. Facing South means facing +Z (Rotation PI).
+	var enemy_center = Vector3(0, 400, -spawn_radius)
+	FlightManager.instance.spawn_formation(enemy_center, GlobalEnums.Team.ENEMY, mass_enemy_count, 50.0, Vector3(0, PI, 0))
 	
 	max_allies_count = mass_ally_count
 	max_enemies_count = mass_enemy_count
@@ -102,21 +112,21 @@ func _spawn_ground_vehicles() -> void:
 	if not ground_system:
 		return
 	
-	# Spawn ally ground vehicles
+	# Spawn ally ground vehicles (South Side: Z > 0)
 	for i in range(ally_ground_count):
 		var random_pos = Vector3(
 			randf_range(-ground_spawn_radius, ground_spawn_radius),
 			0,
-			randf_range(-ground_spawn_radius, 0)
+			randf_range(0, ground_spawn_radius) # Positive Z
 		)
 		var idx = ground_system.spawn_vehicle(random_pos, GlobalEnums.Team.ALLY, 0)
 	
-	# Spawn enemy ground vehicles
+	# Spawn enemy ground vehicles (North Side: Z < 0)
 	for i in range(enemy_ground_count):
 		var random_pos = Vector3(
 			randf_range(-ground_spawn_radius, ground_spawn_radius),
 			0,
-			randf_range(0, ground_spawn_radius)
+			randf_range(-ground_spawn_radius, 0) # Negative Z
 		)
 		var idx = ground_system.spawn_vehicle(random_pos, GlobalEnums.Team.ENEMY, 0)
 	
@@ -188,26 +198,27 @@ func queue_aircraft_spawn(scene: PackedScene, count: int, team: int) -> void:
 	if not scene: return
 	
 	for i in range(count):
-		# Random position around center or player
-		var random_pos = Vector3(
-			randf_range(-spawn_radius, spawn_radius),
-			randf_range(300, 600), # Higher start
-			randf_range(-spawn_radius, spawn_radius)
-		)
+		var pos_x = randf_range(-spawn_radius, spawn_radius)
+		var pos_y = randf_range(300, 600)
+		var pos_z = 0.0
+		var rot_y = 0.0
 		
-		# Offset enemies further away
-		if team == GlobalEnums.Team.ENEMY:
-			random_pos.z -= 400 # Start in front
+		if team == GlobalEnums.Team.ALLY:
+			# Allies: South side (Positive Z), facing North (0)
+			pos_z = randf_range(spawn_radius, spawn_radius + 1000.0)
+			rot_y = randf_range(-10.0, 10.0)
 		else:
-			random_pos.z += 50 # Start behind/near player
-		
-		var rotation_y = randf_range(0, 360)
+			# Enemies: North side (Negative Z), facing South (180)
+			pos_z = randf_range(-spawn_radius - 1000.0, -spawn_radius)
+			rot_y = randf_range(170.0, 190.0)
+			
+		var spawn_pos = Vector3(pos_x, pos_y, pos_z)
 		
 		_spawn_queue.append({
 			"scene": scene,
 			"team": team,
-			"position": random_pos,
-			"rotation": rotation_y
+			"position": spawn_pos,
+			"rotation": rot_y
 		})
 
 func instantiate_aircraft(scene: PackedScene, _team: int, pos: Vector3, rot_y: float) -> void:
