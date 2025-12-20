@@ -36,17 +36,21 @@ static func calculate_performance_factors(parts_health: Dictionary, max_healths:
 static func determine_hit_part(hit_pos_local: Vector3) -> String:
 	# Z: Forward is -Z, Back is +Z
 	# X: Right is +X, Left is -X
-	
-	if hit_pos_local.z < -2.0:
+	# Aircraft spans roughly Z: [-2.0, 2.3]
+	if hit_pos_local.z < -1.3:
+		# Nose and Engine are both in the front. 
+		# Engine is slightly further forward (-1.8) than Nose (-1.5) in this model.
+		if hit_pos_local.z < -1.7:
+			return "engine"
 		return "nose"
-	elif hit_pos_local.z < -1.0:
-		return "engine"
-	elif hit_pos_local.z > 2.0:
+	elif hit_pos_local.z > 1.3:
+		# Tail section
 		if abs(hit_pos_local.x) < 0.5:
 			return "v_tail"
 		else:
 			return "h_tail"
 	elif abs(hit_pos_local.x) > 0.5:
+		# Wings
 		if hit_pos_local.x < -2.0:
 			return "l_wing_out"
 		elif hit_pos_local.x < -0.5:
@@ -79,6 +83,7 @@ static func get_part_node_name(part: String) -> String:
 	match part:
 		"nose": return "Nose"
 		"engine": return "Engine"
+		"fuselage": return "Fuselage"
 		"l_wing_in": return "LeftWingIn"
 		"l_wing_out": return "LeftWingOut"
 		"r_wing_in": return "RightWingIn"
@@ -89,7 +94,8 @@ static func get_part_node_name(part: String) -> String:
 
 ## Check if aircraft should be destroyed
 static func check_critical_damage(parts_health: Dictionary) -> bool:
-	return parts_health["fuselage"] <= 0
+	# Fuselage or Engine destruction is critical
+	return parts_health["fuselage"] <= 0 or parts_health["engine"] <= 0
 
 ## Calculate visual damage effects (smoke intensity, etc.)
 static func calculate_damage_severity(parts_health: Dictionary, max_healths: Dictionary) -> float:
@@ -104,7 +110,7 @@ static func calculate_damage_severity(parts_health: Dictionary, max_healths: Dic
 		return 1.0
 	
 	var health_ratio = total_health / total_max
-	return 1.0 - health_ratio  # 0.0 = no damage, 1.0 = critical
+	return 1.0 - health_ratio # 0.0 = no damage, 1.0 = critical
 
 ## Get recommended repair priority (returns array of part names sorted by priority)
 static func get_repair_priority(parts_health: Dictionary, max_healths: Dictionary) -> Array:

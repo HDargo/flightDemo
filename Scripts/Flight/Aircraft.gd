@@ -436,8 +436,12 @@ func break_part(part: String) -> void:
 		if node.visible:
 			node.hide()
 			explosion.global_position = node.global_position
+			print("  → Visual part hidden: %s" % node_name)
+		else:
+			print("  → Part already hidden: %s" % node_name)
 	else:
 		explosion.global_position = global_position
+		print("  → WARNING: Could not find visual node for part: %s (node_name: %s)" % [part, node_name])
 	
 	# Check wing destruction using DamageSystem
 	if part in ["l_wing_out", "r_wing_out", "l_wing_in", "r_wing_in"]:

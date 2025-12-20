@@ -118,41 +118,83 @@ func process_ai(delta: float) -> void:
 		else:
 			aircraft.input_fire = false
 
-func handle_survival(_delta: float, my_data: Dictionary) -> bool:
+func handle_survival(delta: float, my_data: Dictionary) -> bool:
 	var altitude = my_data.pos.y
+	var vertical_speed = my_data.vel.y
 	var current_speed = my_data.vel.length()
 	var forward = - aircraft.global_transform.basis.z
 	var current_pitch = asin(clamp(forward.y, -1.0, 1.0))
 	
-	# A. Terrain Avoidance (Absolute Priority at low altitude)
-	if altitude < 200.0:
-		var danger_factor = clamp(1.0 - (altitude / 200.0), 0.0, 1.0)
-		if forward.y < -0.05: danger_factor += 0.3
+	# Predictive Ground Avoidance
+	# If we are falling, we need more space to pull out
+	var descent_rate = max(0.0, -vertical_speed)
+	var time_to_impact = 999.0
+	if descent_rate > 1.0:
+		time_to_impact = altitude / descent_rate
+	
+	# Dynamic floor: The faster we fall, the earlier we must pull up
+	# Base floor 150m, plus 4 seconds of current descent distance
+	var safety_floor = 150.0 + (descent_rate * 4.0)
+	
+	# A. Critical Terrain Avoidance (Panic Pull)
+	if altitude < safety_floor:
+		var danger_factor = clamp(1.0 - (altitude / safety_floor), 0.0, 1.0)
 		
-		if danger_factor > 0.1:
+		# If extremely low or about to impact, max priority
+		if danger_factor > 0.1 or time_to_impact < 4.0:
 			aircraft.input_throttle_up = true
 			aircraft.input_throttle_down = false
 			
-			# Level wings
+			# Level wings first if we are banked too much, to maximize lift vector upwards
 			var right = aircraft.global_transform.basis.x
-			var roll_angle = atan2(right.y, right.length())
-			target_roll = - sign(roll_angle) * min(abs(roll_angle) * 8.0, 1.0)
+			var up = aircraft.global_transform.basis.y
+			var upright_dot = up.dot(Vector3.UP)
 			
-			# Pitch control: At low altitude, NEVER dive even if stalling
-			var max_safe_pitch = deg_to_rad(25.0)
-			if current_pitch > max_safe_pitch:
-				target_pitch = 0.0 # Maintain climb
+			# Roll Logic: Shortest path to upright
+			# If Right Wing is High (right.y > 0), we want to Roll Right (+) to lower it.
+			# If Right Wing is Low (right.y < 0), we want to Roll Left (-) to raise it.
+			target_roll = clamp(right.y * 5.0, -1.0, 1.0)
+			
+			# Inverted Fix: If upside down, we can't be stable.
+			# If up.y is negative (inverted) and right.y is small (wings "level" but inverted),
+			# the proportional control above is too weak (right.y ~ 0).
+			# We must FORCE a roll.
+			if upright_dot < 0.0:
+				var roll_dir = 1.0
+				if right.y < 0.0: roll_dir = -1.0
+				target_roll = roll_dir * 1.0
+			
+			# Pitch control: Gated by orientation
+			# If we are banked heavily (> 60 deg) or inverted (upright_dot < 0.5), 
+			# pulling UP (positive pitch) actually sends us sideways or down.
+			if upright_dot < 0.5:
+				# FOCUS ON ROLL. Do not pull up yet.
+				# Neutral pitch or slight push to keep nose from dropping relative to horizon if possible,
+				# but effectively just wait for roll.
+				target_pitch = 0.0
 			else:
-				# Aggressive pull up
-				target_pitch = clamp(danger_factor * 4.0, 0.0, 1.0)
+				# We are upright enough that pulling back moves us away from ground
+				if current_pitch > deg_to_rad(45.0):
+					target_pitch = 0.5 # Maintain steep climb
+				else:
+					if time_to_impact < 2.0:
+						target_pitch = 1.0
+					else:
+						target_pitch = clamp(danger_factor * 5.0 + 0.2, 0.2, 1.0)
 			
-			return danger_factor > 0.4
+			return true # Block other commands
 	
-	# B. Stall Recovery (Secondary Priority, only if altitude is safe)
+	# B. Stall Recovery (Secondary Priority)
 	if current_speed < aircraft.min_speed * 1.5:
 		aircraft.input_throttle_up = true
 		aircraft.input_throttle_down = false
-		target_pitch = -0.3 # Nose down to gain speed
+		
+		# Only dive to recover speed if we have altitude!
+		if altitude > 400.0:
+			target_pitch = -0.3 # Nose down to gain speed
+		else:
+			target_pitch = 0.0 # Level flight to minimize lift loss while accelerating
+			
 		target_roll = 0.0
 		return true
 			
@@ -191,16 +233,33 @@ func find_target(my_data: Dictionary) -> void:
 		target = best_target
 		target_id = best_id
 
-func maintain_flight(_delta: float, my_data: Dictionary) -> void:
+func maintain_flight(delta: float, my_data: Dictionary) -> void:
 	# Keep wings level and maintain altitude
 	var right = aircraft.global_transform.basis.x
-	var roll_angle = atan2(right.y, right.length())
-	target_roll = - sign(roll_angle) * 0.5
+	var up = aircraft.global_transform.basis.y
+	
+	# Roll Logic:
+	target_roll = clamp(right.y * 2.0, -1.0, 1.0)
+	
+	# Anti-Inverted Check:
+	if up.y < 0.0:
+		var roll_dir = 1.0
+		if right.y < 0.0: roll_dir = -1.0
+		target_roll = roll_dir * 1.0
 	
 	var altitude = my_data.pos.y
-	if altitude < 300.0: target_pitch = 0.2
-	elif altitude > 500.0: target_pitch = -0.1
-	else: target_pitch = 0.0
+	var vertical_speed = my_data.vel.y
+	
+	# PID-like altitude hold
+	var target_altitude = 400.0
+	var error = target_altitude - altitude
+	
+	# If we are low, we want positive vertical speed
+	# If we are high, we want negative vertical speed
+	var desired_vs = clamp(error * 0.1, -20.0, 20.0)
+	var vs_error = desired_vs - vertical_speed
+	
+	target_pitch = clamp(vs_error * 0.05, -0.5, 0.5)
 	
 	var speed = my_data.vel.length()
 	var cruise_speed = aircraft.max_speed * 0.7

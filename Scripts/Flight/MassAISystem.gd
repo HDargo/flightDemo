@@ -154,8 +154,42 @@ func _find_nearest_enemy(index: int, pos: Vector3, team: int, mass_system: MassA
 func _generate_control_inputs(index: int, target_idx: int, mass_system: MassAircraftSystem) -> void:
 	var my_pos = mass_system.positions[index]
 	var my_rot = mass_system.rotations[index]
-	var target_pos = mass_system.positions[target_idx]
 	
+	# Altitude Check (Ground Avoidance)
+	var altitude = my_pos.y
+	var is_low = altitude < 250.0
+	var is_critical = altitude < 120.0
+	
+	if is_critical:
+		# PANIC: Pull up hard, level wings, max throttle
+		
+		var my_basis = Basis.from_euler(my_rot)
+		var right = my_basis.x
+		var local_up = my_basis.y
+		var upright_dot = local_up.dot(Vector3.UP)
+		
+		# Pitch Logic: Only pull up if upright
+		if upright_dot < 0.5:
+			ai_pitch_outputs[index] = 0.0
+		else:
+			ai_pitch_outputs[index] = 1.0
+			
+		# Level wings: Roll towards 0 (Right wing high -> Roll Right to lower it)
+		# Note: Right.y > 0 means Bank Left (Right wing is UP).
+		# To fix, we roll Right (+).
+		ai_roll_outputs[index] = clamp(right.y * 5.0, -1.0, 1.0)
+		
+		# Inverted Fix:
+		if upright_dot < 0.0:
+			var roll_dir = 1.0
+			if right.y < 0.0: roll_dir = -1.0
+			ai_roll_outputs[index] = roll_dir * 1.0
+			
+		ai_throttle_outputs[index] = 1.0
+		ai_fire_outputs[index] = 0
+		return # Override all other logic
+	
+	var target_pos = mass_system.positions[target_idx]
 	var my_basis = Basis.from_euler(my_rot)
 	var my_forward = -my_basis.z
 	
@@ -170,7 +204,13 @@ func _generate_control_inputs(index: int, target_idx: int, mass_system: MassAirc
 			var dot_up = my_basis.y.dot(to_target)
 			
 			# Pitch control
-			ai_pitch_outputs[index] = -dot_up  # Negative because up is positive Y
+			var pitch_input = -dot_up
+			
+			# Safety: If low and target is below, don't dive
+			if is_low and target_pos.y < my_pos.y:
+				pitch_input = max(pitch_input, 0.1) # Maintain slight climb
+				
+			ai_pitch_outputs[index] = pitch_input
 			
 			# Roll control
 			ai_roll_outputs[index] = dot_right
@@ -189,7 +229,7 @@ func _generate_control_inputs(index: int, target_idx: int, mass_system: MassAirc
 		
 		GlobalEnums.AIState.EVADE:
 			# Evade: Roll and turn away
-			ai_pitch_outputs[index] = 0.3  # Pull up
+			ai_pitch_outputs[index] = 0.5  # Pull up harder
 			ai_roll_outputs[index] = 1.0 if randf() > 0.5 else -1.0  # Hard roll
 			ai_throttle_outputs[index] = 1.0  # Full throttle
 			ai_fire_outputs[index] = 0
@@ -198,9 +238,10 @@ func _generate_control_inputs(index: int, target_idx: int, mass_system: MassAirc
 			_generate_idle_inputs(index)
 
 func _generate_idle_inputs(index: int) -> void:
-	ai_pitch_outputs[index] = 0.0
+	# Keep safe altitude even in idle
+	ai_pitch_outputs[index] = 0.1 # Slight climb
 	ai_roll_outputs[index] = 0.0
-	ai_throttle_outputs[index] = 0.5
+	ai_throttle_outputs[index] = 0.6
 	ai_fire_outputs[index] = 0
 
 func apply_ai_to_mass_system(mass_system: MassAircraftSystem) -> void:
