@@ -412,17 +412,16 @@ func _process_ai_batch(_task_idx: int, delta: float, total_items: int, _total_ta
 			continue
 		
 		# Distance-based update frequency using cached positions
-		var update_interval = 4 # Default: every 4 frames
+		# OPTIMIZED: Reduced frequency to handle 700+ agents
+		var update_interval = 16 # Default: every 16 frames (~3.75 FPS)
 		if has_player:
 			var aircraft_idx = ai.my_aircraft_index
 			if aircraft_idx != -1 and aircraft_idx < _aircraft_positions.size():
 				var dist_sq = _aircraft_positions[aircraft_idx].distance_squared_to(player_pos)
-				if dist_sq < 1000000: # < 1000m: every frame for max responsiveness
-					update_interval = 1
-				elif dist_sq < 4000000: # < 2000m: every 2 frames
-					update_interval = 2
-				else: # > 2000m: every 4 frames
+				if dist_sq < 1000000: # < 1000m: every 4 frames (~15 FPS)
 					update_interval = 4
+				elif dist_sq < 4000000: # < 2000m: every 8 frames (~7.5 FPS)
+					update_interval = 8
 		
 		if (i + _frame_count) % update_interval != 0:
 			continue

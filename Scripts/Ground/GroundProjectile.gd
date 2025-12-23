@@ -8,6 +8,7 @@ class_name GroundProjectile
 
 var faction: GlobalEnums.Team = GlobalEnums.Team.NEUTRAL
 var has_hit: bool = false
+var shooter: Node = null
 
 func _ready() -> void:
 	contact_monitor = true
@@ -28,6 +29,13 @@ func set_velocity(velocity: Vector3) -> void:
 	linear_velocity = velocity
 
 func _on_body_entered(body: Node) -> void:
+	if body == shooter:
+		return
+		
+	# Stop physics immediately to prevent pushing the target
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	
 	if has_hit:
 		return
 	
@@ -46,6 +54,14 @@ func _on_body_entered(body: Node) -> void:
 func _explode() -> void:
 	if explosion_radius > 0:
 		_apply_explosion_damage()
+	
+	# Spawn Explosion Effect
+	var explosion_scene = load("res://Scenes/Effects/Explosion.tscn")
+	if explosion_scene:
+		var explosion = explosion_scene.instantiate()
+		get_tree().root.add_child(explosion)
+		explosion.global_position = global_position
+		explosion.scale = Vector3.ONE * 2.0 # Bigger boom for tanks
 	
 	queue_free()
 

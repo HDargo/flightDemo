@@ -1,11 +1,16 @@
-[gd_scene load_steps=8 format=3 uid="uid://cqv8ymh3xk7dq"]
+[gd_scene load_steps=12 format=3 uid="uid://cqv8ymh3xk7dq"]
 
 [ext_resource type="Script" uid="uid://cenylgtxur4kr" path="res://Scripts/Ground/GroundVehicle.gd" id="1_tank"]
 [ext_resource type="Script" path="res://Scripts/Ground/GroundWeaponSystem.gd" id="2_weapon"]
 [ext_resource type="Script" uid="uid://ctgx3chjp4u13" path="res://Scripts/Ground/GroundAI.gd" id="3_ai"]
+[ext_resource type="PackedScene" uid="uid://b7j8k9m3xp2rq" path="res://Scenes/Ground/TankShell.tscn" id="4_shell"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_tank"]
+friction = 0.8
+rough = true
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_tank"]
-size = Vector3(3, 2, 4)
+size = Vector3(3, 1.6, 5)
 
 [sub_resource type="BoxMesh" id="BoxMesh_hull"]
 size = Vector3(3, 1.6, 5)
@@ -19,17 +24,39 @@ top_radius = 0.15
 bottom_radius = 0.15
 height = 3.0
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flash"]
+transparency = 1
+albedo_color = Color(0.6, 0.6, 0.6, 0.2)
+emission_enabled = false
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_flash"]
+direction = Vector3(0, 0, -1)
+spread = 90.0
+initial_velocity_min = 1.0
+initial_velocity_max = 4.0
+gravity = Vector3(0, 1, 0)
+damping_min = 0.5
+damping_max = 1.0
+scale_min = 1.0
+scale_max = 4.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_flash"]
+material = SubResource("StandardMaterial3D_flash")
+size = Vector3(0.05, 0.05, 0.05)
+
 [node name="Tank" type="CharacterBody3D"]
 collision_layer = 2
+collision_mask = 11
+safe_margin = 0.01
 script = ExtResource("1_tank")
 max_speed = 15.0
 acceleration = 3.0
 turn_speed = 1.0
 max_health = 300.0
-turret_rotation_speed = 1.5
+turret_rotation_speed = 5.0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
 shape = SubResource("BoxShape3D_tank")
 
 [node name="Visual" type="Node3D" parent="."]
@@ -45,18 +72,51 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 [node name="TurretMesh" type="MeshInstance3D" parent="Visual/Turret"]
 mesh = SubResource("SphereMesh_turret")
 
-[node name="Barrel" type="MeshInstance3D" parent="Visual/Turret"]
-transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 2, 0, 0, -2)
+[node name="Barrel" type="Node3D" parent="Visual/Turret"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.5)
+
+[node name="BarrelMesh" type="MeshInstance3D" parent="Visual/Turret/Barrel"]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0, -1.5)
 mesh = SubResource("CylinderMesh_barrel")
+skeleton = NodePath("../..")
 
-[node name="WeaponSystem" type="Node" parent="."]
+[node name="FirePointPrimary" type="Node3D" parent="Visual/Turret/Barrel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.0)
+
+[node name="MuzzleFlash" type="GPUParticles3D" parent="Visual/Turret/Barrel/FirePointPrimary"]
+emitting = false
+amount = 100
+lifetime = 1.5
+one_shot = true
+explosiveness = 0.95
+process_material = SubResource("ParticleProcessMaterial_flash")
+draw_pass_1 = SubResource("BoxMesh_flash")
+
+[node name="FirePointSecondary" type="Node3D" parent="Visual/Turret/Barrel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.3, -2.5)
+
+[node name="MuzzleFlash" type="GPUParticles3D" parent="Visual/Turret/Barrel/FirePointSecondary"]
+emitting = false
+amount = 50
+lifetime = 1.0
+one_shot = true
+explosiveness = 0.95
+process_material = SubResource("ParticleProcessMaterial_flash")
+draw_pass_1 = SubResource("BoxMesh_flash")
+
+[node name="WeaponSystem" type="Node" parent="." node_paths=PackedStringArray("fire_point_primary_node", "fire_point_secondary_node")]
 script = ExtResource("2_weapon")
-fire_rate = 0.5
-projectile_speed = 80.0
-projectile_damage = 50.0
-
-[node name="FirePoint" type="Node3D" parent="WeaponSystem"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -4)
+primary_projectile = ExtResource("4_shell")
+primary_fire_rate = 0.8
+primary_speed = 100.0
+primary_damage = 50.0
+secondary_projectile = ExtResource("4_shell")
+secondary_fire_rate = 8.0
+secondary_speed = 200.0
+secondary_damage = 5.0
+secondary_spread = 2.0
+fire_point_primary_node = NodePath("../Visual/Turret/Barrel/FirePointPrimary")
+fire_point_secondary_node = NodePath("../Visual/Turret/Barrel/FirePointSecondary")
 
 [node name="GroundAI" type="Node" parent="."]
 script = ExtResource("3_ai")

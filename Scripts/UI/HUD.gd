@@ -132,6 +132,9 @@ func _process(delta: float) -> void:
 	else:
 		lock_box.visible = false
 
+func _draw() -> void:
+	pass
+
 
 func set_aircraft(aircraft: Aircraft) -> void:
 	target_aircraft = aircraft

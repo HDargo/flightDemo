@@ -13,29 +13,58 @@ class_name CameraRig
 @export var shake_intensity: float = 0.05
 @export var max_shake_speed: float = 80.0
 
+# Free Cam Settings
+@export var free_cam_speed: float = 100.0
+@export var free_cam_boost_multiplier: float = 3.0
+@export var mouse_sensitivity: float = 0.003
+
 @onready var camera: Camera3D = $Camera3D
 
 var target: Node3D
 var is_cockpit_view: bool = false
 var is_spectator: bool = false
+var is_free_cam: bool = false
 var spectator_target_index: int = 0
 
 func _ready() -> void:
 	if target_path:
 		target = get_node(target_path)
 	else:
-		# Try to find parent if no target set
 		target = get_parent()
-	
-	# Detach from parent rotation/position if needed, but if we use TopLevel, we are good.
 	set_as_top_level(true)
 
 func enable_spectator_mode(exclude_target: Node3D = null) -> void:
 	is_spectator = true
-	is_cockpit_view = false # Force chase view
+	is_free_cam = false
+	is_cockpit_view = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	find_new_target(0, exclude_target)
 
-func _unhandled_input(event: InputEvent) -> void:
+func enable_free_cam() -> void:
+	is_free_cam = true
+	is_spectator = false
+	target = null
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	
+	# Reset Roll and Pitch to ensure level flight
+	rotation.x = 0.0
+	rotation.z = 0.0
+	if camera:
+		camera.rotation.z = 0.0
+	
+	print("[CameraRig] Free Cam Enabled (WASD to move, Shift to boost, Mouse to look)")
+
+func _input(event: InputEvent) -> void:
+	if is_free_cam:
+		if event is InputEventMouseMotion:
+			# Yaw (Rotate Rig)
+			rotate_y(-event.relative.x * mouse_sensitivity)
+			# Pitch (Rotate Camera only, to avoid roll issues)
+			if camera:
+				camera.rotate_x(-event.relative.y * mouse_sensitivity)
+				camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-90), deg_to_rad(90))
+		return
+
 	if not is_spectator: return
 	
 	if event is InputEventKey and event.pressed:
@@ -51,7 +80,6 @@ func find_new_target(direction: int, exclude_target: Node3D = null) -> void:
 	else:
 		all_aircraft = get_tree().get_nodes_in_group("ally") + get_tree().get_nodes_in_group("enemy")
 		
-	# Filter out dead or invalid ones
 	var valid_aircraft = []
 	for a in all_aircraft:
 		if is_instance_valid(a) and not a.is_queued_for_deletion() and a != exclude_target:
@@ -62,8 +90,6 @@ func find_new_target(direction: int, exclude_target: Node3D = null) -> void:
 		return
 		
 	spectator_target_index += direction
-	
-	# Wrap around
 	if spectator_target_index >= valid_aircraft.size():
 		spectator_target_index = 0
 	elif spectator_target_index < 0:
@@ -74,13 +100,38 @@ func find_new_target(direction: int, exclude_target: Node3D = null) -> void:
 
 func toggle_view() -> void:
 	is_cockpit_view = !is_cockpit_view
-	
-	# Notify HUD about view change
 	var hud = get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("set_cockpit_view"):
 		hud.set_cockpit_view(is_cockpit_view)
 
 func _process(delta: float) -> void:
+	if is_free_cam:
+		# Explicit WASD check
+		var input_dir = Vector2.ZERO
+		if Input.is_key_pressed(KEY_W): input_dir.y -= 1.0
+		if Input.is_key_pressed(KEY_S): input_dir.y += 1.0
+		if Input.is_key_pressed(KEY_A): input_dir.x -= 1.0
+		if Input.is_key_pressed(KEY_D): input_dir.x += 1.0
+		
+		var vertical = 0.0
+		if Input.is_key_pressed(KEY_E): vertical += 1.0
+		if Input.is_key_pressed(KEY_Q): vertical -= 1.0
+		
+		var speed = free_cam_speed
+		if Input.is_key_pressed(KEY_SHIFT):
+			speed *= free_cam_boost_multiplier
+			
+		var forward = -camera.global_transform.basis.z
+		var right = camera.global_transform.basis.x
+		var up = Vector3.UP # Absolute up for vertical movement
+		
+		# Fly direction relative to camera view
+		var direction = (forward * -input_dir.y + right * input_dir.x).normalized()
+		direction += up * vertical
+		
+		global_position += direction * speed * delta
+		return
+
 	if not is_instance_valid(target):
 		if is_spectator:
 			find_new_target(1)
@@ -117,10 +168,13 @@ func _process(delta: float) -> void:
 			# Prevent errors when look_dir is parallel to target_up
 			if abs(look_dir.dot(target_up)) < 0.99:
 				var target_basis_look = Basis.looking_at(look_dir, target_up)
-				global_transform.basis = global_transform.basis.slerp(target_basis_look, t * 2.0).orthonormalized()
+				# Orthonormalize current basis BEFORE slerp to avoid Quaternion conversion errors
+				var current_basis = global_transform.basis.orthonormalized()
+				global_transform.basis = current_basis.slerp(target_basis_look, t * 2.0).orthonormalized()
 			else:
 				# Fallback if weird angle: just rotate to target basis directly
-				global_transform.basis = global_transform.basis.slerp(target_basis, t * 2.0).orthonormalized()
+				var current_basis = global_transform.basis.orthonormalized()
+				global_transform.basis = current_basis.slerp(target_basis, t * 2.0).orthonormalized()
 
 	# --- Speed FX (FOV & Shake) ---
 	var speed = 0.0

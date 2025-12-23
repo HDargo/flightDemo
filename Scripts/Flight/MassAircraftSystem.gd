@@ -46,6 +46,7 @@ var _pipeline: RID
 var _uniform_set: RID
 var _buffer: RID
 var _use_compute_shader: bool = false
+var _gpu_task_pending: bool = false
 
 # Constants
 const MAX_AIRCRAFT: int = 2000
@@ -227,6 +228,10 @@ func _cleanup_gpu_resources() -> void:
 	if not _rd:
 		return
 	
+	if _gpu_task_pending:
+		_rd.sync()
+		_gpu_task_pending = false
+	
 	if _uniform_set.is_valid():
 		_rd.free_rid(_uniform_set)
 	if _buffer.is_valid():
@@ -315,11 +320,19 @@ func _physics_process(delta: float) -> void:
 	_update_rendering()
 
 func _update_physics_gpu(delta: float) -> void:
-	# Upload data to GPU
+	# 1. Sync and read results from PREVIOUS frame (if any)
+	if _gpu_task_pending:
+		_rd.sync()
+		var result_bytes = _rd.buffer_get_data(_buffer)
+		_unpack_aircraft_data(result_bytes)
+		_gpu_task_pending = false
+	
+	# 2. Upload data for CURRENT frame
+	# Note: We are using the state updated from the previous frame's result
 	var buffer_data = _pack_aircraft_data(delta)
 	_rd.buffer_update(_buffer, 0, buffer_data.size(), buffer_data)
 	
-	# Dispatch compute shader
+	# 3. Dispatch compute shader for CURRENT frame
 	var compute_list = _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(compute_list, _pipeline)
 	_rd.compute_list_bind_uniform_set(compute_list, _uniform_set, 0)
@@ -329,13 +342,10 @@ func _update_physics_gpu(delta: float) -> void:
 	_rd.compute_list_dispatch(compute_list, workgroups, 1, 1)
 	_rd.compute_list_end()
 	
-	# Submit and sync
+	# 4. Submit but DO NOT sync immediately
 	_rd.submit()
-	_rd.sync()
-	
-	# Read back results
-	var result_bytes = _rd.buffer_get_data(_buffer)
-	_unpack_aircraft_data(result_bytes)
+	_gpu_task_pending = true
+
 
 func _pack_aircraft_data(delta: float) -> PackedByteArray:
 	var data = PackedByteArray()

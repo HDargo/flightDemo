@@ -490,7 +490,7 @@ func break_part(part: String) -> void:
 				print("[WARNING] Wing destroyed! Aircraft entering uncontrollable spin!")
 
 func die() -> void:
-	print("Aircraft destroyed!")
+	#print("Aircraft destroyed!")
 	
 	# Stop processing immediately to prevent errors
 	set_process(false)

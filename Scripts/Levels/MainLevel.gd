@@ -15,9 +15,10 @@ extends Node3D
 # Ground vehicle settings (NEW)
 @export_group("Ground Vehicles")
 @export var spawn_ground_vehicles: bool = true
-@export var ground_vehicle_scene: PackedScene
-@export var ally_ground_count: int = 20
-@export var enemy_ground_count: int = 20
+@export var ground_vehicle_scene: PackedScene = preload("res://Scenes/Ground/Tank.tscn")
+@export var capture_zone_scene: PackedScene = preload("res://Scenes/Ground/CaptureZone.tscn")
+@export var ally_ground_count: int = 10
+@export var enemy_ground_count: int = 10
 @export var ground_spawn_radius: float = 800.0
 
 @onready var aircraft: Aircraft = $Aircraft
@@ -29,6 +30,9 @@ var game_over: bool = false
 var max_allies_count: int = 0
 var max_enemies_count: int = 0
 var _startup_delay: float = 2.0
+
+var ally_base_pos: Vector3
+var enemy_base_pos: Vector3
 
 # Spawn Queue System (legacy)
 var _spawn_queue: Array = []
@@ -50,6 +54,9 @@ func _ready() -> void:
 	
 	# Use exclusive fullscreen for better performance and true fullscreen experience
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	
+	# Setup Capture Zones
+	_setup_capture_zones()
 	
 	if aircraft and hud:
 		hud.set_aircraft(aircraft)
@@ -79,7 +86,7 @@ func _ready() -> void:
 			hud.show_game_over("Loading...")
 	
 	# Spawn ground vehicles
-	if spawn_ground_vehicles and ground_system:
+	if spawn_ground_vehicles:
 		_spawn_ground_vehicles()
 	
 	# Add Pause Menu
@@ -108,29 +115,160 @@ func _spawn_mass_aircraft() -> void:
 	
 	print("[MainLevel] Spawned ", mass_ally_count, " allies and ", mass_enemy_count, " enemies using mass system")
 
+func _setup_capture_zones() -> void:
+	if not capture_zone_scene: return
+	
+	# Ally Base (South)
+	ally_base_pos = Vector3(0, 0, 1000)
+	var ally_zone = capture_zone_scene.instantiate()
+	ally_zone.owning_team = GlobalEnums.Team.ALLY
+	ally_zone.base_captured.connect(_on_base_captured)
+	add_child(ally_zone)
+	# Set position AFTER adding to tree
+	ally_zone.global_position = ally_base_pos
+	
+	var mat_ally = StandardMaterial3D.new()
+	mat_ally.albedo_color = Color(0.2, 0.4, 1.0) # Blue
+	ally_zone.get_node("Visual/Flag").set_surface_override_material(0, mat_ally)
+	
+	# Enemy Base (North)
+	enemy_base_pos = Vector3(0, 0, -1000)
+	var enemy_zone = capture_zone_scene.instantiate()
+	enemy_zone.owning_team = GlobalEnums.Team.ENEMY
+	enemy_zone.base_captured.connect(_on_base_captured)
+	add_child(enemy_zone)
+	# Set position AFTER adding to tree
+	enemy_zone.global_position = enemy_base_pos
+	
+	var mat_enemy = StandardMaterial3D.new()
+	mat_enemy.albedo_color = Color(1.0, 0.2, 0.2) # Red
+	enemy_zone.get_node("Visual/Flag").set_surface_override_material(0, mat_enemy)
+	
+	print("[MainLevel] Capture Zones setup complete.")
+
+func _on_base_captured(capturing_team: int) -> void:
+	if game_over: return
+	game_over = true
+	
+	if capturing_team == GlobalEnums.Team.ALLY:
+		hud.show_game_over("VICTORY! Enemy Base Captured!")
+	else:
+		hud.show_game_over("DEFEAT! Ally Base Captured!")
+
 func _spawn_ground_vehicles() -> void:
-	if not ground_system:
-		return
+	if not ground_vehicle_scene:
+		ground_vehicle_scene = load("res://Scenes/Ground/Tank.tscn")
+		if not ground_vehicle_scene:
+			push_error("Failed to load Tank.tscn")
+			return
 	
-	# Spawn ally ground vehicles (South Side: Z > 0)
+	print("[MainLevel] Spawning Ground Vehicles...")
+	
+	# Ally Group (South Side: Z > 0) -> Move to Enemy Base (North)
+	var ally_spawn_center = Vector3(0, 20, 1000) # Increased spawn height for safety
 	for i in range(ally_ground_count):
+		var unit = ground_vehicle_scene.instantiate()
+		unit.faction = GlobalEnums.Team.ALLY
+		add_child(unit)
+		
 		var random_pos = Vector3(
 			randf_range(-ground_spawn_radius, ground_spawn_radius),
-			0,
-			randf_range(0, ground_spawn_radius) # Positive Z
+			5.0,
+			randf_range(500, 500 + ground_spawn_radius)
 		)
-		var idx = ground_system.spawn_vehicle(random_pos, GlobalEnums.Team.ALLY, 0)
+		unit.global_position = random_pos
+		
+		# Set Waypoints
+		var ai = unit.get_node_or_null("GroundAI")
+		if ai:
+			var waypoints: Array[Vector3] = [enemy_base_pos]
+			ai.set_waypoints(waypoints)
 	
-	# Spawn enemy ground vehicles (North Side: Z < 0)
+	# Enemy Group (North Side: Z < 0) -> Move to Ally Base (South)
+	var enemy_spawn_center = Vector3(0, 20, -1000)
 	for i in range(enemy_ground_count):
+		var unit = ground_vehicle_scene.instantiate()
+		unit.faction = GlobalEnums.Team.ENEMY
+		add_child(unit)
+		
 		var random_pos = Vector3(
 			randf_range(-ground_spawn_radius, ground_spawn_radius),
-			0,
-			randf_range(-ground_spawn_radius, 0) # Negative Z
+			5.0,
+			randf_range(-500 - ground_spawn_radius, -500)
 		)
-		var idx = ground_system.spawn_vehicle(random_pos, GlobalEnums.Team.ENEMY, 0)
+		unit.global_position = random_pos
+		
+		# Set Waypoints
+		var ai = unit.get_node_or_null("GroundAI")
+		if ai:
+			var waypoints: Array[Vector3] = [ally_base_pos]
+			ai.set_waypoints(waypoints)
 	
-	print("[MainLevel] Spawned ", ally_ground_count, " ally and ", enemy_ground_count, " enemy ground vehicles")
+	print("[MainLevel] Spawned ", ally_ground_count, " ally and ", enemy_ground_count, " enemy tanks with objectives.")
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed:
+		# --- R Key: Camera Mode ---
+		if event.keycode == KEY_R:
+			print("[MainLevel] R key pressed. Toggling Camera Mode...")
+			var player_dead = not is_instance_valid(aircraft) or (aircraft.get("current_health") != null and aircraft.current_health <= 0)
+			if player_dead:
+				var cam = get_viewport().get_camera_3d()
+				if cam:
+					var rig = cam.get_parent()
+					if rig and rig.has_method("enable_free_cam"): 
+						if rig.get("is_free_cam"):
+							print("[MainLevel] Free Cam Active -> Switching to Spectator Mode.")
+							rig.enable_spectator_mode()
+						else:
+							print("[MainLevel] Spectator Active -> Switching to Free Cam.")
+							rig.enable_free_cam()
+			else:
+				print("[MainLevel] Player is still alive. Camera toggle denied.")
+		
+		# --- Time Scale (Numpad or Top Row) ---
+		elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
+			Engine.time_scale = 1.0
+			print("[Time Scale] 1.0x (Normal)")
+		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
+			Engine.time_scale = 2.0
+			print("[Time Scale] 2.0x (Fast)")
+		elif event.keycode == KEY_3 or event.keycode == KEY_KP_3:
+			Engine.time_scale = 4.0
+			print("[Time Scale] 4.0x (Very Fast)")
+		elif event.keycode == KEY_4 or event.keycode == KEY_KP_4:
+			Engine.time_scale = 0.5
+			print("[Time Scale] 0.5x (Slow)")
+
+		# --- Debug: Wing Break (Y/T) ---
+		elif event.keycode == KEY_Y or event.keycode == KEY_T:
+			var target_to_break = null
+			
+			# Priority 1: Locked Target
+			if is_instance_valid(aircraft) and is_instance_valid(aircraft.locked_target):
+				target_to_break = aircraft.locked_target
+			
+			# Priority 2: Closest Enemy
+			if not target_to_break and FlightManager.instance:
+				var min_dist = 99999.0
+				var p_pos = aircraft.global_position if is_instance_valid(aircraft) else Vector3.ZERO
+				for a in FlightManager.instance.aircrafts:
+					if is_instance_valid(a) and a != aircraft and a.team != GlobalEnums.Team.ALLY:
+						var d = p_pos.distance_squared_to(a.global_position)
+						if d < min_dist:
+							min_dist = d
+							target_to_break = a
+			
+			if target_to_break:
+				if event.keycode == KEY_Y:
+					print("[Debug] Breaking Left Wing of ", target_to_break.name)
+					target_to_break.break_part("l_wing_out")
+				elif event.keycode == KEY_T:
+					print("[Debug] Breaking Right Wing of ", target_to_break.name)
+					target_to_break.break_part("r_wing_out")
+			else:
+				print("[Debug] No target found to break wings.")
+
 
 
 var _hud_update_timer: float = 0.0
