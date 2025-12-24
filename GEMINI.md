@@ -30,18 +30,20 @@ The core goal is to support **1,000+ aircraft and 5,000+ ground units** simultan
 
 ### ✅ Completed
 - **Phase 1 Modularization:** `Aircraft` component separation.
+- **Phase 2 Modularization:** `FlightManager` split (`ProjectilePoolSystem`, `MissilePoolSystem`, `AircraftRegistry`, `AIThreadScheduler`).
+- **Phase 3 Modularization:** `MassAircraftSystem` split (`MassRenderSystem`, `MassPhysicsEngine`).
 - **Core Physics:** Basic flight model, "Death Spiral" fix.
 - **Optimization:** Initial `MultiMesh` implementation.
 
 ### 🚀 Next Steps (Priority)
-1.  **Modularization:**
-    -   Split `ProjectilePoolSystem`.
-    -   Split `MissilePoolSystem`.
-    -   Create `AircraftRegistry`.
-    -   Create `AIThreadScheduler`.
+1.  **Verification:**
+    -   Verify integration of `MassAircraftSystem` refactor.
+    -   Test `MassPhysicsEngine` (CPU/GPU switching).
 2.  **Performance:**
-    -   Full integration of Compute Shaders for collision.
-    -   Tune `MassAircraftSystem`.
+    -   Full integration of Compute Shaders for collision (currently CPU raycast in `ProjectilePoolSystem`).
+    -   Optimize `MassAISystem` (it still needs modularization or tuning).
+3.  **Gameplay:**
+    -   Implement "Capture Zone" logic with Mass AI.
 
 ## 📂 Project Structure Highlights
 - `Scripts/Flight/`: Core flight logic. `FlightManager.gd` is the central coordinator.
