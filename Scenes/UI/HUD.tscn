@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://Scripts/UI/HUD.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://cockpit_hud" path="res://Scenes/UI/CockpitHUD.tscn" id="2_cockpit"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/Radar.tscn" id="3_radar"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -149,5 +150,8 @@ border_width = 2.0
 editor_only = false
 
 [node name="CockpitHUD" parent="." instance=ExtResource("2_cockpit")]
+
+[node name="Radar" parent="." instance=ExtResource("3_radar")]
+layout_mode = 1
 
 

@@ -133,19 +133,22 @@ func return_missile(m: Missile) -> void:
 	if missile_system:
 		missile_system.return_missile(m)
 
+# Cached references to avoid getter overhead
+var cached_aircrafts: Array[Node] = []
+static var _last_physics_frame: int = -1
+
 func _physics_process(delta: float) -> void:
+	# CRITICAL: Prevent ANY instance from running if another already did this frame
+	var current_frame = Engine.get_physics_frames()
+	if _last_physics_frame == current_frame:
+		return
+	_last_physics_frame = current_frame
+	
 	_frame_count += 1
 	
-	# Process mass system if enabled
-	if use_mass_system:
-		_process_mass_system(delta)
-	
-	# Early exit if no legacy aircraft
-	if not aircraft_registry or aircraft_registry.aircrafts.is_empty():
-		return
-	
-	# Update cache every frame (lightweight now)
+	# Update cached reference once per frame
 	if aircraft_registry:
+		cached_aircrafts = aircraft_registry.aircrafts
 		aircraft_registry.update_registry(_frame_count)
 	
 	# Start AI processing less frequently (every 3 physics frames for better performance)

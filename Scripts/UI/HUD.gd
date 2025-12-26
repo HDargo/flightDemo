@@ -10,6 +10,7 @@ class_name HUD
 @onready var damage_arrow: Polygon2D = $DamageIndicator/Arrow
 @onready var chase_hud: Control = $VBoxContainer
 @onready var cockpit_hud: Control = $CockpitHUD
+@onready var radar: Radar = $Radar
 @onready var warning_label: Label = null  # Will be created if needed
 
 var is_cockpit_view: bool = false
@@ -74,6 +75,8 @@ func update_battle_status(allies: int, enemies: int, max_allies: int, max_enemie
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(target_aircraft):
+		if is_cockpit_view:
+			set_cockpit_view(false)
 		lock_box.visible = false
 		speed_label.text = "Speed: 0.0"
 		throttle_label.text = "Throttle: 0%"
@@ -100,9 +103,9 @@ func _process(delta: float) -> void:
 		if warning_label:
 			warning_label.visible = false
 
-	# Update Text Labels (Throttled to 10 FPS)
+	# Update Text Labels (Throttled to 5 FPS)
 	_update_timer += delta
-	if _update_timer >= 0.1:
+	if _update_timer >= 0.2:
 		_update_timer = 0.0
 		speed_label.text = "Speed: %.1f" % target_aircraft.current_speed
 		throttle_label.text = "Throttle: %.0f%%" % (target_aircraft.throttle * 100)
@@ -138,6 +141,8 @@ func _draw() -> void:
 
 func set_aircraft(aircraft: Aircraft) -> void:
 	target_aircraft = aircraft
+	if radar:
+		radar.set_aircraft(aircraft)
 	if cockpit_hud:
 		cockpit_hud.set_aircraft(aircraft)
 	if not target_aircraft.is_connected("damage_taken", _on_damage_taken):

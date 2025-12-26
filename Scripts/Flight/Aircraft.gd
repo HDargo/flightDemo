@@ -9,21 +9,25 @@ signal physics_updated(speed: float, altitude: float, vertical_speed: float, aoa
 const FlightPhysics = preload("res://Scripts/Flight/FlightPhysics.gd")
 const DamageSystem = preload("res://Scripts/Flight/DamageSystem.gd")
 
+# Aircraft Data (NEW)
+@export var aircraft_data: AircraftResource
+
 # Components (NEW)
 var input_handler: Node = null
 var weapon_system: Node = null
+var visual: AircraftVisual = null
 
-# Settings
+# Settings (Default values, will be overridden by aircraft_data if present)
 @export var max_speed: float = 50.0
-@export var min_speed: float = 10.0 # Minimum flight speed to maintain lift
-@export var acceleration: float = 90.0 # Increased by 50% (was 60.0)
-@export var drag_factor: float = 0.006 # Balanced drag
+@export var min_speed: float = 10.0
+@export var acceleration: float = 90.0
+@export var drag_factor: float = 0.006
 @export var turn_speed: float = 2.0
 @export var pitch_speed: float = 2.0
 @export var roll_speed: float = 3.0
 @export var pitch_acceleration: float = 5.0
 @export var roll_acceleration: float = 5.0
-@export var lift_factor: float = 0.00178 # Calculated: 0.0082 / 4.6 to normalize 464% lift to ~100%
+@export var lift_factor: float = 0.00178
 @export var mouse_sensitivity: float = 0.002
 @export var fire_rate: float = 0.1
 @export var missile_lock_range: float = 2000.0
@@ -36,16 +40,22 @@ var missile_scene = preload("res://Scenes/Entities/Missile.tscn")
 var current_speed: float = 0.0
 var current_pitch: float = 0.0
 var current_roll: float = 0.0
-var throttle: float = 0.0 # 0.0 to 1.0
+var current_yaw: float = 0.0 # Added yaw support
+var throttle: float = 0.0 
 var input_pitch: float = 0.0
 var input_roll: float = 0.0
+var input_yaw: float = 0.0 # Added yaw input
 var input_fire: bool = false
 var input_missile: bool = false
 var input_throttle_up: bool = false
 var input_throttle_down: bool = false
+var input_flare: bool = false # Added flare input
 
 var last_fire_time: float = 0.0
 var last_missile_time: float = 0.0
+var last_flare_time: float = 0.0 # Flare cooldown
+var flare_count: int = 30 # Limited flares
+var flare_cooldown: float = 0.5
 var missile_cooldown: float = 2.0
 var locked_target: Node3D = null
 var _performance_dirty: bool = false
@@ -59,28 +69,61 @@ var _spin_factor: float = 0.0
 var _crash_timer: float = 0.0
 
 # Damage System
-var parts_health = {
-	"nose": 50.0,
-	"fuselage": 150.0,
-	"engine": 100.0,
-	"l_wing_in": 80.0,
-	"l_wing_out": 60.0,
-	"r_wing_in": 80.0,
-	"r_wing_out": 60.0,
-	"v_tail": 60.0,
-	"h_tail": 60.0
-}
-var max_part_healths = {
-	"nose": 50.0,
-	"fuselage": 150.0,
-	"engine": 100.0,
-	"l_wing_in": 80.0,
-	"l_wing_out": 60.0,
-	"r_wing_in": 80.0,
-	"r_wing_out": 60.0,
-	"v_tail": 60.0,
-	"h_tail": 60.0
-}
+var parts_health = {}
+var max_part_healths = {}
+
+func _initialize_from_resource() -> void:
+	if not aircraft_data:
+		# Fallback to defaults
+		parts_health = {
+			"nose": 50.0, "fuselage": 150.0, "engine": 100.0,
+			"l_wing_in": 80.0, "l_wing_out": 60.0, "r_wing_in": 80.0, "r_wing_out": 60.0,
+			"v_tail": 60.0, "h_tail": 60.0
+		}
+		max_part_healths = parts_health.duplicate()
+		return
+	
+	# Override settings
+	max_speed = aircraft_data.max_speed
+	acceleration = aircraft_data.acceleration
+	turn_speed = aircraft_data.turn_speed
+	pitch_speed = aircraft_data.pitch_speed
+	roll_speed = aircraft_data.roll_speed
+	lift_factor = aircraft_data.lift_factor
+	fire_rate = aircraft_data.fire_rate
+	missile_lock_range = aircraft_data.missile_lock_range
+	
+	parts_health = aircraft_data.parts_health.duplicate()
+	max_part_healths = parts_health.duplicate()
+	
+	# Instantiate Visual
+	if aircraft_data.visual_scene:
+		# Hide existing meshes if any
+		for child in get_children():
+			if child is MeshInstance3D:
+				child.hide()
+		
+		var visual_instance = aircraft_data.visual_scene.instantiate()
+		add_child(visual_instance)
+		
+		# Safer assignment
+		if visual_instance is AircraftVisual:
+			visual = visual_instance
+		
+		# Apply base color to visual if it has a way to set it
+		if visual_instance.has_method("set_base_color"):
+			visual_instance.set_base_color(aircraft_data.base_color)
+		elif "base_color" in aircraft_data:
+			# Direct material override fallback for simple models
+			_apply_color_to_node(visual_instance, aircraft_data.base_color)
+
+func _apply_color_to_node(node: Node, color: Color) -> void:
+	for child in node.get_children():
+		if child is MeshInstance3D:
+			var mat = StandardMaterial3D.new()
+			mat.albedo_color = color
+			child.set_surface_override_material(0, mat)
+		_apply_color_to_node(child, color)
 
 # Cached Performance Factors (Optimization)
 var _c_engine_factor: float = 1.0
@@ -119,6 +162,7 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	# Physics process is enabled by default for CharacterBody3D
 	# Setup components FIRST
+	_initialize_from_resource()
 	_setup_components()
 	
 	# Only register if not already registered in _enter_tree
@@ -131,9 +175,9 @@ func _ready() -> void:
 			
 	recalculate_performance_factors()
 	
-	# Initialize Physics State
-	throttle = 1.0 # Start at full power
-	current_speed = 60.0 # Start with good flight speed
+	# Initialize Physics State with Max Speed from resource
+	throttle = 1.0 
+	current_speed = max_speed
 	velocity = - global_transform.basis.z * current_speed
 	
 	if is_player:
@@ -225,8 +269,20 @@ func calculate_physics(delta: float) -> void:
 		var current_basis = global_transform.basis
 		current_basis = FlightPhysics.apply_pitch_rotation(current_basis, current_pitch, pitch_speed, delta)
 		current_basis = FlightPhysics.apply_roll_rotation(current_basis, current_roll, roll_speed, delta)
-		current_basis = current_basis.orthonormalized()
+		
+		# Only orthonormalize every few frames or if strictly needed
+		if Engine.get_physics_frames() % 5 == 0:
+			current_basis = current_basis.orthonormalized()
 		global_transform.basis = current_basis
+	
+	# Update Visual Animations (LOD based on Active Camera)
+	if visual and is_instance_valid(visual):
+		var cam = get_viewport().get_camera_3d()
+		if is_player or (cam and global_position.distance_squared_to(cam.global_position) < 16000000): # 4km range
+			visual.update_animation(input_pitch, input_roll, input_yaw, delta)
+			visual.visible = true
+		else:
+			visual.visible = false
 	
 	# --- VECTOR PHYSICS ENGINE ---
 	
@@ -304,32 +360,20 @@ func calculate_physics(delta: float) -> void:
 		if randf() < 0.01: # Very occasional warning
 			pass # print("[WARNING] STALL! Angle of Attack: %.1f degrees" % aoa)
 
+var _last_physics_frame: int = -1
+
 func _physics_process(delta: float) -> void:
-	# CRITICAL: Prevent duplicate calls from inherited scenes
-	# This can happen if scripts are attached to both parent and child scenes
+	# CRITICAL: Prevent duplicate calls in the same frame
+	var current_frame = Engine.get_physics_frames()
+	if _last_physics_frame == current_frame:
+		return
+	_last_physics_frame = current_frame
+	
 	if not is_inside_tree():
 		return
 	
-	# CRITICAL: Prevent physics death spiral
-	# If delta is too large, skip this frame to catch up
-	if delta > 0.1: # More than 100ms per frame = severe lag
-		push_warning("[Aircraft] Skipping physics frame due to severe lag (delta: %.3f)" % delta)
+	if delta > 0.1:
 		return
-	
-	# Debug: Track call frequency
-	_physics_call_count += 1
-	_physics_call_timer += delta
-	if _physics_call_timer >= 1.0:
-		if is_player:
-			var expected_fps = Engine.physics_ticks_per_second
-			var actual_calls = _physics_call_count
-			var ratio = float(actual_calls) / expected_fps
-			# print("[Aircraft] Physics calls: ", actual_calls, " | Expected: ", expected_fps, " | Ratio: ", "%.2f" % ratio, "x")
-			if ratio > 1.5:
-				push_warning("[Aircraft] Physics process called ", ratio, "x more than expected!")
-				push_warning("[Aircraft] Instance ID: ", get_instance_id(), " | Path: ", get_path())
-		_physics_call_count = 0
-		_physics_call_timer = 0.0
 	
 	if _performance_dirty:
 		recalculate_performance_factors()
@@ -340,10 +384,15 @@ func _physics_process(delta: float) -> void:
 		input_handler.process_input()
 		input_pitch = input_handler.input_pitch
 		input_roll = input_handler.input_roll
+		input_yaw = input_handler.input_yaw
 		input_fire = input_handler.input_fire
 		input_missile = input_handler.input_missile
 		input_throttle_up = input_handler.input_throttle_up
 		input_throttle_down = input_handler.input_throttle_down
+		input_flare = input_handler.input_flare
+	
+	# Process Flares
+	_process_flares(delta)
 	
 	# CPU-based physics calculation
 	calculate_physics(delta)
@@ -351,9 +400,7 @@ func _physics_process(delta: float) -> void:
 	# Wing destroyed - force movement even in safe altitude
 	var is_crashing = _wing_destroyed
 	
-	# Optimization: LOD for Physics (Physics LOD)
-	# Only use expensive move_and_slide when collision is likely (Low altitude) or for Player.
-	# This prevents the "Physics Death Spiral" where lag causes more physics steps, causing more lag.
+	# Optimization: LOD for Physics
 	var safe_altitude = 50.0
 	
 	if is_player or is_crashing or global_position.y < safe_altitude:
@@ -362,9 +409,9 @@ func _physics_process(delta: float) -> void:
 		if get_slide_collision_count() > 0:
 			_handle_collision(delta)
 	else:
-		# Simple movement for AI in safe zone (High altitude)
-		# This is much cheaper than move_and_slide()
+		# Simple movement for AI in safe zone
 		global_position += velocity * delta
+
 
 
 func _handle_collision(_delta: float) -> void:
@@ -427,55 +474,46 @@ func take_damage(amount: float, hit_pos_local: Vector3) -> void:
 			die()
 
 func _update_part_visuals(part: String) -> void:
-	var node_name = DamageSystem.get_part_node_name(part)
-	if node_name == "" or not has_node(node_name):
-		return
-		
-	var node = get_node(node_name)
-	if not node is MeshInstance3D and not node is CSGPrimitive3D:
+	if not visual: return
+	
+	var node = visual.get_part_node(part)
+	if not node or (not node is MeshInstance3D and not node is CSGPrimitive3D):
 		return
 		
 	var health_ratio = parts_health[part] / max_part_healths[part]
-	# Darken the part: 1.0 health = white (original), 0.0 health = black/very dark
-	# We use a color multiplier or direct albedo color.
-	var color_val = 0.2 + (health_ratio * 0.8) # Don't go completely pitch black
-	var damage_color = Color(color_val, color_val, color_val)
+	var color_val = 0.2 + (health_ratio * 0.8)
+	var damage_color = aircraft_data.base_color * color_val
 	
-	# Get material and make unique if not already
 	var mat = node.get_active_material(0)
 	if mat:
-		# Important: Check if it's already a unique copy (we can tag it or just duplicate once)
-		# For simplicity, we duplicate it if it's the first time this part is hit
 		if not mat.resource_local_to_scene:
 			mat = mat.duplicate()
 			node.set_surface_override_material(0, mat)
 		
 		if mat is StandardMaterial3D:
 			mat.albedo_color = damage_color
-		elif mat is ShaderMaterial:
-			# If using a shader, we assume it has an albedo or tint parameter
-			mat.set_shader_parameter("albedo", damage_color)
-			mat.set_shader_parameter("tint", damage_color)
 
 func break_part(part: String) -> void:
 	var explosion_scene = preload("res://Scenes/Effects/Explosion.tscn")
 	var explosion = explosion_scene.instantiate()
 	get_parent().add_child(explosion)
 	
-	# Get node name using DamageSystem
-	var node_name = DamageSystem.get_part_node_name(part)
-	
-	if node_name != "" and has_node(node_name):
-		var node = get_node(node_name)
-		if node.visible:
+	if visual:
+		var node = visual.get_part_node(part)
+		if node:
+			explosion.global_position = node.global_position
+			visual.hide_part(part)
+			print("  → Visual part hidden: %s" % part)
+		else:
+			explosion.global_position = global_position
+			print("  → WARNING: Could not find visual node for part: %s" % part)
+	else:
+		# Legacy fallback
+		var node_name = DamageSystem.get_part_node_name(part)
+		if node_name != "" and has_node(node_name):
+			var node = get_node(node_name)
 			node.hide()
 			explosion.global_position = node.global_position
-			print("  → Visual part hidden: %s" % node_name)
-		else:
-			print("  → Part already hidden: %s" % node_name)
-	else:
-		explosion.global_position = global_position
-		print("  → WARNING: Could not find visual node for part: %s (node_name: %s)" % [part, node_name])
 	
 	# Check wing destruction using DamageSystem
 	if part in ["l_wing_out", "r_wing_out", "l_wing_in", "r_wing_in"]:
@@ -513,6 +551,35 @@ func die() -> void:
 # Debug: Track physics_process calls
 var _physics_call_count: int = 0
 var _physics_call_timer: float = 0.0
+
+func _process_flares(delta: float) -> void:
+	if input_flare:
+		var current_time = Time.get_ticks_msec() / 1000.0
+		if flare_count > 0 and current_time - last_flare_time >= flare_cooldown:
+			last_flare_time = current_time
+			flare_count -= 1
+			_spawn_flare()
+
+func _spawn_flare() -> void:
+	# Simple flare implementation using a small sphere for now
+	# In a full implementation, this would be a specialized class/scene
+	var flare = Node3D.new()
+	flare.add_to_group("flares")
+	get_parent().add_child(flare)
+	
+	# Spawn slightly behind and below the aircraft
+	var offset = Vector3(randf_range(-1, 1), -1, 1)
+	flare.global_position = global_transform * offset
+	
+	# Add a light or particle effect
+	var OmniLight = OmniLight3D.new()
+	OmniLight.light_color = Color(1, 0.8, 0.2)
+	OmniLight.omni_range = 10.0
+	flare.add_child(OmniLight)
+	
+	# Self-destruct after 3 seconds
+	var timer = get_tree().create_timer(3.0)
+	timer.timeout.connect(flare.queue_free)
 
 func _process(delta: float) -> void:
 	# CRITICAL: Validity check to prevent "previously freed instance" errors

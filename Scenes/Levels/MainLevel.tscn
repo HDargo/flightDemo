@@ -1,6 +1,5 @@
-[gd_scene load_steps=12 format=3 uid="uid://mainlevel"]
+[gd_scene load_steps=11 format=3 uid="uid://mainlevel"]
 
-[ext_resource type="PackedScene" uid="uid://ircraft" path="res://Scenes/Entities/Aircraft.tscn" id="1_aircraft"]
 [ext_resource type="Script" uid="uid://bu2r2aett1fys" path="res://Scripts/Levels/MainLevel.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://hud" path="res://Scenes/UI/HUD.tscn" id="3_hud"]
 
@@ -44,10 +43,6 @@ script = ExtResource("1_script")
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
 [node name="HUD" parent="CanvasLayer" groups=["hud"] instance=ExtResource("3_hud")]
-
-[node name="Aircraft" parent="." instance=ExtResource("1_aircraft")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)
-team = 1
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")

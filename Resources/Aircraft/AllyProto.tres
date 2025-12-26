@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="AircraftResource" load_steps=3 format=3 uid="uid://blu4i3dlcegif"]
+
+[ext_resource type="PackedScene" path="res://Scenes/Entities/Visuals/PrototypeVisual.tscn" id="1_visual"]
+[ext_resource type="Script" uid="uid://cag8u6udfmr06" path="res://Scripts/Flight/AircraftResource.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+aircraft_name = "Ally-F"
+visual_scene = ExtResource("1_visual")
+base_color = Color(0.2, 0.5, 1, 1)

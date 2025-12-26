@@ -20,6 +20,7 @@ var shooter: Node3D = null
 var _speed: float = START_SPEED
 var _life: float = 0.0
 var _active: bool = false
+var _flare_check_timer: float = 0.0 # Timer for checking flares
 
 # Trail reference
 var _trail: GPUParticles3D = null
@@ -77,6 +78,14 @@ func _physics_process(delta: float) -> void:
 	# Accelerate
 	_speed = move_toward(_speed, max_speed, acceleration * delta)
 	
+	# Flare Deception Check
+	if _active and is_instance_valid(target) and not target.is_in_group("flares"):
+		_flare_check_timer -= delta
+		if _flare_check_timer <= 0:
+			# Reduce frequency even more for multiple missiles
+			_flare_check_timer = 0.4 # Check 2.5 times per second
+			_check_for_flares()
+	
 	# Turn towards target
 	if is_instance_valid(target):
 		var to_target = target.global_position - global_position
@@ -114,6 +123,27 @@ func _physics_process(delta: float) -> void:
 	if _life >= arm_time and not monitoring:
 		monitoring = true
 		monitorable = true
+
+func _check_for_flares() -> void:
+	var flares = get_tree().get_nodes_in_group("flares")
+	if flares.size() == 0: return
+	
+	var best_flare = null
+	var min_dist_sq = 300.0 * 300.0 # 300m attraction range
+	
+	for flare in flares:
+		if not is_instance_valid(flare): continue
+		var d_sq = global_position.distance_squared_to(flare.global_position)
+		if d_sq < min_dist_sq:
+			min_dist_sq = d_sq
+			best_flare = flare
+			
+	if best_flare:
+		# 25% chance per check to switch to flare if it's within range
+		# This makes deploying multiple flares more effective
+		if randf() < 0.25:
+			target = best_flare
+			# print("[Missile] Decoyed by flare!")
 
 func _on_body_entered(body: Node3D) -> void:
 	if not _active: return

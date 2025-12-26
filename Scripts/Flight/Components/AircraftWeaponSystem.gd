@@ -99,30 +99,48 @@ func _deferred_shoot() -> void:
 	
 	last_fire_time = Time.get_ticks_msec() / 1000.0
 	
-	# Spawn projectiles from twin guns
-	var offsets = [Vector3(1.5, 0, -1), Vector3(-1.5, 0, -1)]
+	# Try to get muzzle points from visual
+	var muzzles = []
+	if "visual" in _aircraft and is_instance_valid(_aircraft.visual):
+		muzzles = _aircraft.visual.gun_muzzles
 	
 	if FlightManager.instance:
-		for offset in offsets:
-			var tf = _aircraft.global_transform * Transform3D(Basis(), offset)
-			FlightManager.instance.spawn_projectile(tf)
+		if muzzles.size() > 0:
+			# Use defined muzzles
+			for muzzle in muzzles:
+				if is_instance_valid(muzzle):
+					FlightManager.instance.spawn_projectile(muzzle.global_transform)
+		else:
+			# Legacy Fallback: Twin guns
+			var offsets = [Vector3(1.5, 0, -1), Vector3(-1.5, 0, -1)]
+			for offset in offsets:
+				var tf = _aircraft.global_transform * Transform3D(Basis(), offset)
+				FlightManager.instance.spawn_projectile(tf)
 
 func _deferred_fire_missile() -> void:
 	if not _aircraft: return
 	if not locked_target or not is_instance_valid(locked_target):
-		print("No valid target locked")
 		return
 	
 	last_missile_time = Time.get_ticks_msec() / 1000.0
 	
-	# Toggle wing
-	_missile_wing_toggle = not _missile_wing_toggle
-	var wing_offset = Vector3(2.0 if _missile_wing_toggle else -2.0, -0.5, 0.0)
+	# Try to get missile points from visual
+	var muzzles = []
+	if "visual" in _aircraft and is_instance_valid(_aircraft.visual):
+		muzzles = _aircraft.visual.missile_muzzles
 	
-	# Calculate spawn transform
-	var launch_transform = _aircraft.global_transform * Transform3D(Basis(), wing_offset)
-	
-	# Spawn via manager
 	if FlightManager.instance:
-		FlightManager.instance.spawn_missile(launch_transform, locked_target, _aircraft)
-		print("Missile fired at ", locked_target.name)
+		if muzzles.size() > 0:
+			# Sequence (toggle) for missiles
+			_missile_wing_toggle = not _missile_wing_toggle
+			var idx = 0 if _missile_wing_toggle else 1
+			if muzzles.size() > idx and is_instance_valid(muzzles[idx]):
+				FlightManager.instance.spawn_missile(muzzles[idx].global_transform, locked_target, _aircraft)
+			else:
+				FlightManager.instance.spawn_missile(muzzles[0].global_transform, locked_target, _aircraft)
+		else:
+			# Legacy Fallback
+			_missile_wing_toggle = not _missile_wing_toggle
+			var wing_offset = Vector3(2.0 if _missile_wing_toggle else -2.0, -0.5, 0.0)
+			var launch_transform = _aircraft.global_transform * Transform3D(Basis(), wing_offset)
+			FlightManager.instance.spawn_missile(launch_transform, locked_target, _aircraft)

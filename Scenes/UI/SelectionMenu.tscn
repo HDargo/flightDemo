@@ -1,0 +1,110 @@
+[gd_scene load_steps=3 format=3 uid="uid://selection_menu"]
+
+[ext_resource type="Script" path="res://Scripts/UI/SelectionMenu.gd" id="1_script"]
+
+[node name="SelectionMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.705882)
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -450.0
+offset_top = -250.0
+offset_right = 450.0
+offset_bottom = 250.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="HBox" type="HBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="LeftPanel" type="VBoxContainer" parent="Panel/HBox"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
+
+[node name="MarginContainer" type="MarginContainer" parent="Panel/HBox/LeftPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+
+[node name="Label" type="Label" parent="Panel/HBox/LeftPanel/MarginContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "SELECT AIRCRAFT"
+horizontal_alignment = 1
+
+[node name="ItemList" type="ItemList" parent="Panel/HBox/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 18
+
+[node name="StatsLabel" type="Label" parent="Panel/HBox/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Stats..."
+horizontal_alignment = 1
+
+[node name="SelectButton" type="Button" parent="Panel/HBox/LeftPanel"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "DEPLOY TO BATTLE"
+
+[node name="RightPanel" type="Control" parent="Panel/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="Panel/HBox/RightPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="Panel/HBox/RightPanel/SubViewportContainer"]
+transparent_bg = true
+handle_input_locally = false
+msaa_3d = 2
+screen_space_aa = 1
+size = Vector2i(596, 500)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="Panel/HBox/RightPanel/SubViewportContainer/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6)
+fov = 40.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="Panel/HBox/RightPanel/SubViewportContainer/SubViewport"]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
+
+[node name="PreviewAnchor" type="Node3D" parent="Panel/HBox/RightPanel/SubViewportContainer/SubViewport"]
+
+[connection signal="item_selected" from="Panel/HBox/LeftPanel/ItemList" to="." method="_on_item_list_item_selected"]
+[connection signal="pressed" from="Panel/HBox/LeftPanel/SelectButton" to="." method="_on_select_button_pressed"]

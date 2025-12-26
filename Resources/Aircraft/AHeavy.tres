@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="AircraftResource" load_steps=3 format=3 uid="uid://attacker_aircraft_data"]
+
+[ext_resource type="PackedScene" uid="uid://attacker_visual" path="res://Scenes/Entities/Visuals/AttackerVisual.tscn" id="1_visual"]
+[ext_resource type="Script" path="res://Scripts/Flight/AircraftResource.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+aircraft_name = "A-Heavy"
+visual_scene = ExtResource("1_visual")
+base_color = Color(0.2, 0.3, 0.2, 1)
+max_speed = 45.0
+acceleration = 60.0
+turn_speed = 1.5
+pitch_speed = 1.5
+roll_speed = 2.0
+lift_factor = 0.0022
+parts_health = {
+"engine": 200.0,
+"fuselage": 300.0,
+"h_tail": 100.0,
+"l_wing_in": 120.0,
+"l_wing_out": 100.0,
+"nose": 100.0,
+"r_wing_in": 120.0,
+"r_wing_out": 100.0,
+"v_tail": 100.0
+}
+fire_rate = 0.05
+missile_lock_range = 1500.0

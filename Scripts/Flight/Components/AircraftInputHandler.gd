@@ -9,8 +9,10 @@ class_name AircraftInputHandler
 # Input state (read by Aircraft)
 var input_pitch: float = 0.0
 var input_roll: float = 0.0
+var input_yaw: float = 0.0
 var input_fire: bool = false
 var input_missile: bool = false
+var input_flare: bool = false
 var input_throttle_up: bool = false
 var input_throttle_down: bool = false
 
@@ -26,10 +28,12 @@ func process_input() -> void:
 	# Get input from input actions (supports keyboard, joystick, mouse)
 	var pitch_input = Input.get_axis("flight_pitch_up", "flight_pitch_down")
 	var roll_input = Input.get_axis("flight_roll_left", "flight_roll_right")
+	var yaw_input = Input.get_axis("flight_yaw_left", "flight_yaw_right")
 	
 	# Apply pitch and roll (inverted for correct feel)
 	input_pitch = -pitch_input
 	input_roll = -roll_input
+	input_yaw = yaw_input
 	
 	# Mouse Input (Accumulated from _unhandled_input)
 	if _mouse_input.length_squared() > 0:
@@ -48,6 +52,9 @@ func process_input() -> void:
 	# Throttle
 	input_throttle_up = Input.is_action_pressed("flight_throttle_up")
 	input_throttle_down = Input.is_action_pressed("flight_throttle_down")
+	
+	# Flare (Default to X key)
+	input_flare = Input.is_key_pressed(KEY_X)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
