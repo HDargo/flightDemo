@@ -34,7 +34,8 @@ func _exit_tree() -> void:
 		FlightManager.instance.unregister_ai(self)
 
 func _ready() -> void:
-	set_physics_process(true)
+	# Disable individual physics process to save overhead
+	set_physics_process(false)
 	
 	if not FlightManager.instance:
 		await get_tree().process_frame

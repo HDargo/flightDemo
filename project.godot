@@ -97,7 +97,7 @@ flight_yaw_right={
 
 [physics]
 
-common/max_physics_steps_per_frame=4
+common/max_physics_steps_per_frame=2
 
 [rendering]
 

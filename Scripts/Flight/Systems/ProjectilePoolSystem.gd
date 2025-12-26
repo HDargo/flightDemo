@@ -95,18 +95,15 @@ func update_projectiles(delta: float, space_state: PhysicsDirectSpaceState3D, fr
 		_multi_mesh_instance.multimesh.visible_instance_count = 0
 		return
 	
-	var current_time = Time.get_ticks_msec() / 1000.0
-	_shader_material.set_shader_parameter("current_time", current_time)
+	# Global shader time update
+	_shader_material.set_shader_parameter("current_time", Time.get_ticks_msec() / 1000.0)
 	
-	if not space_state:
-		return
+	if not space_state: return
 	
-	var query = _query_params
-	var mm = _multi_mesh_instance.multimesh
 	var i = 0
-	
-	# Only do expensive raycasts every 3 frames (better performance)
-	var do_raycast = (frame_count % 3) == 0
+	# Very aggressive: Only raycast every 4 frames to ensure 60fps stability
+	var do_raycast = (frame_count % 4) == 0
+	var mm = _multi_mesh_instance.multimesh
 	
 	while i < _projectile_data.size():
 		var p = _projectile_data[i]
@@ -114,23 +111,26 @@ func update_projectiles(delta: float, space_state: PhysicsDirectSpaceState3D, fr
 		
 		if p.life <= 0:
 			_recycle_projectile(i)
-		else:
-			var movement = p.velocity * delta
+			continue
 			
-			# Ray cast (skip every other frame for performance)
-			if do_raycast:
-				query.from = p.position
-				query.to = p.position + movement
-				var result = space_state.intersect_ray(query)
-				
-				if not result.is_empty():
-					_handle_collision(result, p)
-					_recycle_projectile(i)
-					continue
-			
-			# Still alive - update position
-			p.position += movement
-			i += 1
+		var movement = p.velocity * delta
+		var next_pos = p.position + movement
+		
+		if do_raycast:
+			_query_params.from = p.position
+			_query_params.to = next_pos
+			var result = space_state.intersect_ray(_query_params)
+			if not result.is_empty():
+				_handle_collision(result, p)
+				_recycle_projectile(i)
+				continue
+		
+		p.position = next_pos
+		
+		# Batch update MultiMesh only if it's a visible frame or every few steps
+		# Actually, since we need movement, we update transform but very fast
+		mm.set_instance_transform(i, Transform3D(p.basis, p.position))
+		i += 1
 	
 	mm.visible_instance_count = _projectile_data.size()
 

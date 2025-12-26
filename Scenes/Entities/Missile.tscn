@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://missile"]
+[gd_scene load_steps=10 format=3 uid="uid://missile"]
 
 [ext_resource type="Script" path="res://Scripts/Flight/Missile.gd" id="1_script"]
 
@@ -9,32 +9,44 @@ height = 1.5
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_missile"]
 albedo_color = Color(0.2, 0.2, 0.2, 1)
 emission_enabled = true
-emission = Color(1, 0.2, 0, 1)
-emission_energy_multiplier = 5.0
+emission = Color(1, 0.4, 0, 1)
+emission_energy_multiplier = 8.0
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_missile"]
 material = SubResource("StandardMaterial3D_missile")
 radius = 0.15
 height = 1.5
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_smoke"]
-transparency = 1
-albedo_color = Color(0.8, 0.8, 0.8, 0.5)
-vertex_color_use_as_albedo = true
+[sub_resource type="Curve" id="Curve_smoke"]
+_data = [Vector2(0, 0.2), 0.0, 3.0, 0, 0, Vector2(0.2, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -2.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_smoke"]
+curve = SubResource("Curve_smoke")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_smoke"]
 direction = Vector3(0, 0, 1)
-spread = 5.0
+spread = 2.0
 gravity = Vector3(0, 0, 0)
-initial_velocity_min = 2.0
-initial_velocity_max = 5.0
-scale_min = 0.75
-scale_max = 2.25
-color = Color(1, 1, 1, 0.5)
+initial_velocity_min = 5.0
+initial_velocity_max = 8.0
+scale_min = 1.5
+scale_max = 3.0
+scale_curve = SubResource("CurveTexture_smoke")
+color = Color(1, 1, 1, 0.6)
 
-[sub_resource type="BoxMesh" id="BoxMesh_smoke"]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_smoke"]
+transparency = 1
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 1, 1, 0.8)
+billboard_mode = 3
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="QuadMesh_smoke"]
 material = SubResource("StandardMaterial3D_smoke")
-size = Vector3(0.3, 0.3, 0.3)
+size = Vector2(0.5, 0.5)
 
 [node name="Missile" type="Area3D"]
 script = ExtResource("1_script")
@@ -48,12 +60,13 @@ transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0, 
 mesh = SubResource("CapsuleMesh_missile")
 
 [node name="Trail" type="GPUParticles3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.8)
 emitting = false
-amount = 50
-lifetime = 1.0
+amount = 200
+lifetime = 2.5
+fixed_fps = 60
 local_coords = false
 process_material = SubResource("ParticleProcessMaterial_smoke")
-draw_pass_1 = SubResource("BoxMesh_smoke")
+draw_pass_1 = SubResource("QuadMesh_smoke")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]

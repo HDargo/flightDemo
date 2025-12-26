@@ -24,6 +24,11 @@ var _missile_wing_toggle: bool = false
 func _ready() -> void:
 	_aircraft = get_parent()
 
+func _exit_tree() -> void:
+	# Release lock on target before being destroyed
+	if is_instance_valid(locked_target) and locked_target.has_method("set_locked_by_enemy"):
+		locked_target.set_locked_by_enemy(false)
+
 func process_weapons(delta: float, input_fire: bool, input_missile: bool) -> void:
 	var current_time = Time.get_ticks_msec() / 1000.0
 	
@@ -41,7 +46,17 @@ func process_target_search(delta: float) -> void:
 		if WorkerThreadPool.is_task_completed(_target_search_task_id):
 			WorkerThreadPool.wait_for_task_completion(_target_search_task_id)
 			_target_search_task_id = -1
-			locked_target = _next_locked_target
+			
+			# Handle RWR notification
+			var new_target = _next_locked_target
+			if locked_target != new_target:
+				if is_instance_valid(locked_target) and locked_target.has_method("set_locked_by_enemy"):
+					locked_target.set_locked_by_enemy(false)
+				
+				if is_instance_valid(new_target) and new_target.has_method("set_locked_by_enemy"):
+					new_target.set_locked_by_enemy(true)
+					
+			locked_target = new_target
 	
 	# Throttle target search
 	_target_search_timer -= delta

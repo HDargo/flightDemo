@@ -53,7 +53,11 @@ func launch(spawn_pos: Transform3D, tgt: Node3D, src: Node3D) -> void:
 	show()
 	set_physics_process(true)
 	
-	# Recreate trail if it was reparented
+	# RWR notification
+	if is_instance_valid(target) and target.has_method("set_missile_incoming"):
+		target.set_missile_incoming(true)
+	
+	# ... (trail logic)
 	if not _trail or not is_instance_valid(_trail) or _trail.get_parent() != self:
 		if _trail_template:
 			_trail = _trail_template.duplicate() as GPUParticles3D
@@ -140,8 +144,11 @@ func _check_for_flares() -> void:
 			
 	if best_flare:
 		# 25% chance per check to switch to flare if it's within range
-		# This makes deploying multiple flares more effective
 		if randf() < 0.25:
+			# Release old target
+			if is_instance_valid(target) and target.has_method("set_missile_incoming"):
+				target.set_missile_incoming(false)
+				
 			target = best_flare
 			# print("[Missile] Decoyed by flare!")
 
@@ -157,7 +164,11 @@ func explode() -> void:
 	_active = false
 	set_physics_process(false)
 	
-	# Detach trail and let it finish independently
+	# Release RWR warning
+	if is_instance_valid(target) and target.has_method("set_missile_incoming"):
+		target.set_missile_incoming(false)
+	
+	# ... (detach trail)
 	if _trail and is_instance_valid(_trail):
 		# Stop emitting NEW particles but keep existing ones
 		_trail.emitting = false

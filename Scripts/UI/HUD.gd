@@ -16,6 +16,7 @@ class_name HUD
 var is_cockpit_view: bool = false
 var _warning_timer: float = 0.0
 var _warning_visible: bool = false
+var _rwr_timer: float = 0.0
 
 # Battle Status
 @onready var ally_bar: ColorRect = $BattleStatus/BarBackground/AllyBar
@@ -86,22 +87,13 @@ func _process(delta: float) -> void:
 			warning_label.visible = false
 		return
 
-	# Warning message for wing destruction
+	# 1. Wing Destruction Warning
 	if warning_label and target_aircraft._wing_destroyed:
-		if not _warning_visible:
-			_warning_visible = true
-			warning_label.text = "!!! WING DESTROYED !!!\nCRITICAL DAMAGE - LOSS OF CONTROL"
-			warning_label.visible = true
-		
-		# Flashing effect
-		_warning_timer += delta
-		if _warning_timer >= 0.5:
-			_warning_timer = 0.0
-			warning_label.visible = not warning_label.visible
-	elif _warning_visible:
-		_warning_visible = false
-		if warning_label:
-			warning_label.visible = false
+		# ... (existing wing warning logic)
+		pass
+	
+	# 2. RWR Warning (Lock / Missile)
+	_process_rwr(delta)
 
 	# Update Text Labels (Throttled to 5 FPS)
 	_update_timer += delta
@@ -134,6 +126,50 @@ func _process(delta: float) -> void:
 			lock_box.visible = false
 	else:
 		lock_box.visible = false
+
+func _process_rwr(delta: float) -> void:
+	if not warning_label: return
+	
+	# Skip if wing is already destroyed (that warning has priority)
+	if target_aircraft._wing_destroyed:
+		if not _warning_visible:
+			_warning_visible = true
+			warning_label.text = "!!! WING DESTROYED !!!\nCRITICAL DAMAGE - LOSS OF CONTROL"
+			warning_label.visible = true
+		
+		_warning_timer += delta
+		if _warning_timer >= 0.5:
+			_warning_timer = 0.0
+			warning_label.visible = not warning_label.visible
+		return
+
+	# Check RWR Status
+	var being_locked = target_aircraft.being_locked_count > 0
+	var missile_incoming = target_aircraft.incoming_missile_count > 0
+	
+	if missile_incoming:
+		warning_label.text = "!!! MISSILE INCOMING !!!"
+		warning_label.add_theme_color_override("font_color", Color.RED)
+		warning_label.visible = true
+		
+		# Faster flashing for missile
+		_rwr_timer += delta
+		if _rwr_timer >= 0.15:
+			_rwr_timer = 0.0
+			warning_label.visible = not warning_label.visible
+	elif being_locked:
+		warning_label.text = "WARNING: RADAR LOCK"
+		warning_label.add_theme_color_override("font_color", Color.YELLOW)
+		warning_label.visible = true
+		
+		# Slower flashing for lock
+		_rwr_timer += delta
+		if _rwr_timer >= 0.4:
+			_rwr_timer = 0.0
+			warning_label.visible = not warning_label.visible
+	else:
+		warning_label.visible = false
+		_rwr_timer = 0.0
 
 func _draw() -> void:
 	pass

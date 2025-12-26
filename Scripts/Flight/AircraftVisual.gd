@@ -15,10 +15,6 @@ class_name AircraftVisual
 @export var rudder_max_angle: float = 15.0
 @export var smoothing: float = 10.0
 
-var _current_aileron: float = 0.0
-var _current_elevator: float = 0.0
-var _current_rudder: float = 0.0
-
 @export_group("Parts Mapping")
 @export var fuselage_node: Node3D
 @export var left_wing_node: Node3D
@@ -30,10 +26,12 @@ var _current_rudder: float = 0.0
 @export var gun_muzzles: Array[Node3D] = []
 @export var missile_muzzles: Array[Node3D] = []
 
+var _current_aileron: float = 0.0
+var _current_elevator: float = 0.0
+var _current_rudder: float = 0.0
 var _part_nodes: Dictionary = {}
 
 func _ready() -> void:
-	# Initialize part mapping
 	_part_nodes = {
 		"nose": fuselage_node,
 		"fuselage": fuselage_node,
@@ -51,25 +49,15 @@ func get_part_node(part: String) -> Node3D:
 
 func hide_part(part: String) -> void:
 	var node = get_part_node(part)
-	if node:
-		node.visible = false
+	if node: node.visible = false
 
 func update_animation(input_pitch: float, input_roll: float, input_yaw: float, delta: float) -> void:
-	# Smoothly interpolate input values
 	_current_aileron = lerp(_current_aileron, input_roll, smoothing * delta)
 	_current_elevator = lerp(_current_elevator, input_pitch, smoothing * delta)
 	_current_rudder = lerp(_current_rudder, input_yaw, smoothing * delta)
 	
-	# Apply to nodes
-	if aileron_left:
-		aileron_left.rotation_degrees.z = _current_aileron * aileron_max_angle
-	if aileron_right:
-		aileron_right.rotation_degrees.z = -_current_aileron * aileron_max_angle
-		
-	if elevator_left:
-		elevator_left.rotation_degrees.x = _current_elevator * elevator_max_angle
-	if elevator_right:
-		elevator_right.rotation_degrees.x = _current_elevator * elevator_max_angle
-		
-	if rudder:
-		rudder.rotation_degrees.y = -_current_rudder * rudder_max_angle
+	if aileron_left: aileron_left.rotation_degrees.z = _current_aileron * aileron_max_angle
+	if aileron_right: aileron_right.rotation_degrees.z = -_current_aileron * aileron_max_angle
+	if elevator_left: elevator_left.rotation_degrees.x = _current_elevator * elevator_max_angle
+	if elevator_right: elevator_right.rotation_degrees.x = _current_elevator * elevator_max_angle
+	if rudder: rudder.rotation_degrees.y = -_current_rudder * rudder_max_angle

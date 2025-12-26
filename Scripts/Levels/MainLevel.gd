@@ -50,14 +50,18 @@ var _is_spawning: bool = false
 func _ready() -> void:
 	Input.set_use_accumulated_input(false)
 	
-	# CRITICAL: Prevent duplicate FlightManager using global static instance check
-	if FlightManager.instance == null:
+	# CRITICAL: Absolute singleton enforcement
+	var existing_manager = get_tree().root.find_child("FlightManager", true, false)
+	if existing_manager:
+		print("[MainLevel] Found existing FlightManager. Linking to it.")
+		# We don't need to add a new one
+	elif FlightManager.instance == null:
 		var flight_manager = FlightManager.new()
 		flight_manager.name = "FlightManager"
 		add_child(flight_manager)
-		print("[MainLevel] FlightManager created and added to scene tree.")
+		print("[MainLevel] FlightManager created and added.")
 	else:
-		print("[MainLevel] FlightManager already exists (Static Instance valid). Skipping creation.")
+		print("[MainLevel] FlightManager static instance exists but node not found. This is unusual.")
 	
 	if spawn_ground_vehicles:
 		ground_system = MassGroundSystem.new()
