@@ -31,3 +31,4 @@ class_name AircraftResource
 @export_group("Weapons")
 @export var fire_rate: float = 0.1
 @export var missile_lock_range: float = 2000.0
+@export var default_loadout: Array[WeaponConfig] = []

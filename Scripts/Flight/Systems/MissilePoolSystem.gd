@@ -4,7 +4,7 @@ class_name MissilePoolSystem
 var _missile_pool: Array[Node] = []
 var _missile_scene = preload("res://Scenes/Entities/Missile.tscn")
 
-func spawn_missile(tf: Transform3D, target: Node3D, shooter: Node3D) -> void:
+func spawn_missile(tf: Transform3D, target: Node3D, shooter: Node3D, damage: float = 25.0) -> void:
 	var m: Missile
 	if _missile_pool.is_empty():
 		m = _missile_scene.instantiate() as Missile
@@ -15,6 +15,7 @@ func spawn_missile(tf: Transform3D, target: Node3D, shooter: Node3D) -> void:
 			m = _missile_scene.instantiate() as Missile
 			get_tree().current_scene.add_child(m)
 	
+	m.damage = damage
 	m.launch(tf, target, shooter)
 
 func return_missile(m: Missile) -> void:

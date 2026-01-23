@@ -65,8 +65,10 @@ func _setup_mass_systems() -> void:
 func _exit_tree() -> void: if instance == self: instance = null
 func register_ai(ai: Node) -> void: if ai_scheduler: ai_scheduler.register_ai(ai)
 func unregister_ai(ai: Node) -> void: if ai_scheduler: ai_scheduler.unregister_ai(ai)
-func spawn_projectile(tf: Transform3D) -> void: if projectile_system: projectile_system.spawn_projectile(tf)
-func spawn_missile(tf: Transform3D, target: Node3D, shooter: Node3D) -> void: if missile_system: missile_system.spawn_missile(tf, target, shooter)
+func spawn_projectile(tf: Transform3D, damage: float = 10.0, speed: float = 200.0, color: Color = Color(1, 1, 0.5)) -> void:
+	if projectile_system: projectile_system.spawn_projectile(tf, damage, speed, color)
+func spawn_missile(tf: Transform3D, target: Node3D, shooter: Node3D, damage: float = 25.0) -> void:
+	if missile_system: missile_system.spawn_missile(tf, target, shooter, damage)
 func return_missile(m: Missile) -> void: if missile_system: missile_system.return_missile(m)
 
 func _enter_tree() -> void:

@@ -18,6 +18,7 @@ var explosion_scene = preload("res://Scenes/Effects/Explosion.tscn")
 var target: Node3D = null
 var shooter: Node3D = null
 var _speed: float = START_SPEED
+var damage: float = 25.0
 var _life: float = 0.0
 var _active: bool = false
 var _flare_check_timer: float = 0.0 # Timer for checking flares

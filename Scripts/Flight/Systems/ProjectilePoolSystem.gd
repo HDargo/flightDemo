@@ -9,6 +9,7 @@ class ProjectileData:
 	var damage: float = 10.0
 	var basis: Basis # Cache rotation to avoid recalculating every frame
 	var spawn_time: float # For shader
+	var color: Color = Color(1, 1, 0.5)
 
 var _projectile_data: Array[ProjectileData] = []
 var _projectile_pool: Array[ProjectileData] = []
@@ -56,7 +57,7 @@ func _setup_multimesh() -> void:
 	mm.mesh = mesh
 	_multi_mesh_instance.multimesh = mm
 
-func spawn_projectile(tf: Transform3D) -> void:
+func spawn_projectile(tf: Transform3D, damage: float = 10.0, speed: float = 200.0, color: Color = Color(1, 1, 0.5)) -> void:
 	if _projectile_data.size() >= _max_projectiles:
 		return
 		
@@ -68,10 +69,11 @@ func spawn_projectile(tf: Transform3D) -> void:
 	
 	var forward = - tf.basis.z
 	p.position = tf.origin
-	p.velocity = forward * 200.0
+	p.velocity = forward * speed
 	p.life = 2.0
-	p.damage = 10.0
+	p.damage = damage
 	p.spawn_time = Time.get_ticks_msec() / 1000.0
+	p.color = color
 	
 	# Calculate basis for projectile orientation
 	# Safety check: Ensure forward is valid
@@ -181,7 +183,20 @@ func _recycle_projectile(index: int) -> void:
 func _update_multimesh_instance(index: int, p: ProjectileData) -> void:
 	var mm = _multi_mesh_instance.multimesh
 	mm.set_instance_transform(index, Transform3D(p.basis, p.position))
+	# We use custom_data for velocity (rgb) and spawn_time (a)
+	# But we also want color? The shader might need update if we want variable color.
+	# For now, let's stick to the existing shader interface (velocity based?)
+	# Or repurpose. The previous code used Color(vel.x, vel.y, vel.z, time).
+	# If the shader relies on this, we can't easily change it without breaking visual.
+	# Assuming standard projectile shader: usually uses color instance custom data or uniform.
+	# If we want variable color, we might need another custom float or just rely on velocity.
+	# Let's keep existing behavior for now but maybe tint?
+	# Actually, the user wants "modular" weapons, maybe tracers differ.
+	# If the shader uses custom_data for velocity/time, we can't pass color there.
+	# We would need set_instance_color (if use_colors is true).
 	mm.set_instance_custom_data(index, Color(p.velocity.x, p.velocity.y, p.velocity.z, p.spawn_time))
+	# Note: If we enable use_colors in setup, we can pass p.color
+	mm.set_instance_color(index, p.color)
 
 func _handle_collision(result: Dictionary, p: ProjectileData) -> void:
 	# Hit something

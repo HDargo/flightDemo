@@ -4,14 +4,16 @@ class_name AircraftWeaponSystem
 ## Component for handling aircraft weapons (guns and missiles)
 ## Separates weapon logic from Aircraft main class
 
-@export var fire_rate: float = 0.1
-@export var missile_cooldown: float = 2.0
 @export var missile_lock_range: float = 2000.0
+@export var default_weapons: Array[WeaponConfig] = []
 
 # Weapon state
+var locked_target: Node3D = null
+var active_weapons: Array[WeaponBase] = []
+
+# Properties needed by Aircraft.gd legacy checks
 var last_fire_time: float = 0.0
 var last_missile_time: float = 0.0
-var locked_target: Node3D = null
 
 # Internal
 var _aircraft: Node3D = null
@@ -19,10 +21,86 @@ var _target_search_timer: float = 0.0
 var _target_search_interval: float = 0.2  # 5 times per second
 var _target_search_task_id: int = -1
 var _next_locked_target: Node3D = null
-var _missile_wing_toggle: bool = false
 
 func _ready() -> void:
 	_aircraft = get_parent()
+	_initialize_weapons()
+
+func _initialize_weapons() -> void:
+	# If no weapons defined (legacy), add defaults
+	if default_weapons.is_empty():
+		_add_legacy_weapons()
+	else:
+		for config in default_weapons:
+			add_weapon(config)
+
+func add_weapon(config: WeaponConfig) -> void:
+	if not config: return
+
+	var mounts = _find_mount_points(config.muzzle_name_prefix)
+	var weapon: WeaponBase
+
+	if config.type == WeaponConfig.WeaponType.GUN:
+		weapon = GunWeapon.new(config, _aircraft, mounts)
+	elif config.type == WeaponConfig.WeaponType.MISSILE:
+		weapon = MissileWeapon.new(config, _aircraft, mounts)
+
+	if weapon:
+		active_weapons.append(weapon)
+		add_child(weapon)
+
+func _find_mount_points(prefix: String) -> Array[Node3D]:
+	var mounts: Array[Node3D] = []
+	if "visual" in _aircraft and is_instance_valid(_aircraft.visual):
+		var visual = _aircraft.visual
+
+		# Specific arrays in visual
+		if prefix == "gun" and visual.gun_muzzles.size() > 0:
+			return visual.gun_muzzles
+		elif prefix == "missile" and visual.missile_muzzles.size() > 0:
+			return visual.missile_muzzles
+
+		# Generic search
+		if visual.has_node(prefix):
+			mounts.append(visual.get_node(prefix))
+		else:
+			# Try finding by pattern in children
+			# (Simple fallback)
+			pass
+
+	# Fallback if no mounts found (Virtual mounts)
+	if mounts.is_empty():
+		var dummy = Node3D.new()
+		dummy.name = "VirtualMount_" + prefix
+		_aircraft.add_child(dummy)
+		# Approximate positions based on type
+		if prefix.contains("gun"):
+			dummy.position = Vector3(0, 0, -2) # Nose
+		else:
+			dummy.position = Vector3(2, -0.5, 0) # Wing
+		mounts.append(dummy)
+
+	return mounts
+
+func _add_legacy_weapons() -> void:
+	# Default Gun
+	var gun_cfg = WeaponConfig.new()
+	gun_cfg.name = "M61 Vulcan"
+	gun_cfg.type = WeaponConfig.WeaponType.GUN
+	gun_cfg.damage = 10.0
+	gun_cfg.fire_rate = 0.1
+	gun_cfg.projectile_speed = 600.0
+	gun_cfg.muzzle_name_prefix = "gun"
+	add_weapon(gun_cfg)
+
+	# Default Missile
+	var msl_cfg = WeaponConfig.new()
+	msl_cfg.name = "AIM-9"
+	msl_cfg.type = WeaponConfig.WeaponType.MISSILE
+	msl_cfg.damage = 30.0
+	msl_cfg.fire_rate = 2.0
+	msl_cfg.muzzle_name_prefix = "missile"
+	add_weapon(msl_cfg)
 
 func _exit_tree() -> void:
 	# Release lock on target before being destroyed
@@ -32,13 +110,28 @@ func _exit_tree() -> void:
 func process_weapons(delta: float, input_fire: bool, input_missile: bool) -> void:
 	var current_time = Time.get_ticks_msec() / 1000.0
 	
-	# Gun firing
-	if input_fire and (current_time - last_fire_time >= fire_rate):
-		call_deferred("_deferred_shoot")
-	
-	# Missile firing
-	if input_missile and (current_time - last_missile_time >= missile_cooldown):
-		call_deferred("_deferred_fire_missile")
+	for weapon in active_weapons:
+		if not is_instance_valid(weapon): continue
+
+		var should_fire = false
+		var target = null
+
+		if weapon.config.type == WeaponConfig.WeaponType.GUN:
+			should_fire = input_fire
+		elif weapon.config.type == WeaponConfig.WeaponType.MISSILE:
+			should_fire = input_missile
+			target = locked_target
+			# Only fire missile if we have a lock? (Optional)
+			if not is_instance_valid(target): should_fire = false
+
+		if should_fire and weapon.can_fire(current_time):
+			weapon.fire(target)
+
+			# Legacy tracking
+			if weapon.config.type == WeaponConfig.WeaponType.GUN:
+				last_fire_time = current_time
+			else:
+				last_missile_time = current_time
 
 func process_target_search(delta: float) -> void:
 	# Check async search result
@@ -109,53 +202,4 @@ func _thread_find_target(params: Dictionary) -> void:
 	
 	_next_locked_target = best_target
 
-func _deferred_shoot() -> void:
-	if not _aircraft: return
-	
-	last_fire_time = Time.get_ticks_msec() / 1000.0
-	
-	# Try to get muzzle points from visual
-	var muzzles = []
-	if "visual" in _aircraft and is_instance_valid(_aircraft.visual):
-		muzzles = _aircraft.visual.gun_muzzles
-	
-	if FlightManager.instance:
-		if muzzles.size() > 0:
-			# Use defined muzzles
-			for muzzle in muzzles:
-				if is_instance_valid(muzzle):
-					FlightManager.instance.spawn_projectile(muzzle.global_transform)
-		else:
-			# Legacy Fallback: Twin guns
-			var offsets = [Vector3(1.5, 0, -1), Vector3(-1.5, 0, -1)]
-			for offset in offsets:
-				var tf = _aircraft.global_transform * Transform3D(Basis(), offset)
-				FlightManager.instance.spawn_projectile(tf)
-
-func _deferred_fire_missile() -> void:
-	if not _aircraft: return
-	if not locked_target or not is_instance_valid(locked_target):
-		return
-	
-	last_missile_time = Time.get_ticks_msec() / 1000.0
-	
-	# Try to get missile points from visual
-	var muzzles = []
-	if "visual" in _aircraft and is_instance_valid(_aircraft.visual):
-		muzzles = _aircraft.visual.missile_muzzles
-	
-	if FlightManager.instance:
-		if muzzles.size() > 0:
-			# Sequence (toggle) for missiles
-			_missile_wing_toggle = not _missile_wing_toggle
-			var idx = 0 if _missile_wing_toggle else 1
-			if muzzles.size() > idx and is_instance_valid(muzzles[idx]):
-				FlightManager.instance.spawn_missile(muzzles[idx].global_transform, locked_target, _aircraft)
-			else:
-				FlightManager.instance.spawn_missile(muzzles[0].global_transform, locked_target, _aircraft)
-		else:
-			# Legacy Fallback
-			_missile_wing_toggle = not _missile_wing_toggle
-			var wing_offset = Vector3(2.0 if _missile_wing_toggle else -2.0, -0.5, 0.0)
-			var launch_transform = _aircraft.global_transform * Transform3D(Basis(), wing_offset)
-			FlightManager.instance.spawn_missile(launch_transform, locked_target, _aircraft)
+# Legacy deferred functions removed as they are now handled by Weapon classes
