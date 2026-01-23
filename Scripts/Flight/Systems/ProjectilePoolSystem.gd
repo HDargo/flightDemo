@@ -105,6 +105,11 @@ func update_projectiles(delta: float, space_state: PhysicsDirectSpaceState3D, fr
 	var do_raycast = (frame_count % 4) == 0
 	var mm = _multi_mesh_instance.multimesh
 	
+	# Cache Mass System
+	var mass_system: MassAircraftSystem = null
+	if FlightManager.instance:
+		mass_system = FlightManager.instance.mass_aircraft_system
+
 	while i < _projectile_data.size():
 		var p = _projectile_data[i]
 		p.life -= delta
@@ -116,6 +121,9 @@ func update_projectiles(delta: float, space_state: PhysicsDirectSpaceState3D, fr
 		var movement = p.velocity * delta
 		var next_pos = p.position + movement
 		
+		var hit_handled = false
+
+		# 1. Physics Raycast (Node-based entities)
 		if do_raycast:
 			_query_params.from = p.position
 			_query_params.to = next_pos
@@ -125,6 +133,29 @@ func update_projectiles(delta: float, space_state: PhysicsDirectSpaceState3D, fr
 				_recycle_projectile(i)
 				continue
 		
+		# 2. Mass System Collision
+		# We check this every frame because missing a hit on a fast moving jet is bad
+		if mass_system and mass_system.spatial_grid:
+			# Radius query: 20m. Aircraft collision size ~5-10m.
+			# Optimization: Check current cell only? query_nearby handles neighbors.
+			var nearby = mass_system.spatial_grid.query_nearby(p.position, 20.0)
+			for ac_idx in nearby:
+				# Basic validity check
+				if ac_idx < 0 or ac_idx >= mass_system.MAX_AIRCRAFT: continue
+				if mass_system.states[ac_idx] == 0: continue
+
+				# Distance check (Hitbox radius approx 8.0m)
+				# TODO: Improved hit detection (Segment vs Sphere) to prevent tunneling
+				var ac_pos = mass_system.positions[ac_idx]
+				if p.position.distance_squared_to(ac_pos) < 64.0:
+					mass_system.damage_aircraft(ac_idx, p.damage)
+					_recycle_projectile(i)
+					hit_handled = true
+					break
+
+		if hit_handled:
+			continue
+
 		p.position = next_pos
 		
 		# Batch update MultiMesh only if it's a visible frame or every few steps

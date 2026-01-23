@@ -14,6 +14,7 @@ var ai_pitch_outputs: PackedFloat32Array = PackedFloat32Array()
 var ai_roll_outputs: PackedFloat32Array = PackedFloat32Array()
 var ai_throttle_outputs: PackedFloat32Array = PackedFloat32Array()
 var ai_fire_outputs: PackedInt32Array = PackedInt32Array()  # 0 or 1
+var weapon_cooldowns: PackedFloat32Array = PackedFloat32Array()
 
 # Performance settings
 const AI_UPDATE_INTERVAL: float = 0.2  # Update every 0.2 seconds
@@ -37,6 +38,7 @@ func initialize(max_aircraft: int) -> void:
 	ai_roll_outputs.resize(max_aircraft)
 	ai_throttle_outputs.resize(max_aircraft)
 	ai_fire_outputs.resize(max_aircraft)
+	weapon_cooldowns.resize(max_aircraft)
 	
 	# Initialize all to idle
 	for i in range(max_aircraft):
@@ -137,17 +139,37 @@ func _find_nearest_enemy(index: int, pos: Vector3, team: int, mass_system: MassA
 	var nearest_idx = -1
 	var nearest_dist_sq = DETECTION_RADIUS_SQ
 	
-	for i in range(mass_system.states.size()):
-		if mass_system.states[i] == 0 or i == index:
-			continue
+	# Use Spatial Grid if available
+	if mass_system.spatial_grid:
+		var radius = sqrt(DETECTION_RADIUS_SQ)
+		var candidates = mass_system.spatial_grid.query_nearby(pos, radius)
 		
-		if mass_system.teams[i] == team:
-			continue  # Same team
-		
-		var dist_sq = pos.distance_squared_to(mass_system.positions[i])
-		if dist_sq < nearest_dist_sq:
-			nearest_dist_sq = dist_sq
-			nearest_idx = i
+		for i in candidates:
+			if i == index: continue
+			# Check bounds just in case
+			if i < 0 or i >= mass_system.states.size(): continue
+			if mass_system.states[i] == 0: continue
+
+			if mass_system.teams[i] == team:
+				continue # Same team
+
+			var dist_sq = pos.distance_squared_to(mass_system.positions[i])
+			if dist_sq < nearest_dist_sq:
+				nearest_dist_sq = dist_sq
+				nearest_idx = i
+	else:
+		# Fallback to linear search
+		for i in range(mass_system.states.size()):
+			if mass_system.states[i] == 0 or i == index:
+				continue
+
+			if mass_system.teams[i] == team:
+				continue  # Same team
+
+			var dist_sq = pos.distance_squared_to(mass_system.positions[i])
+			if dist_sq < nearest_dist_sq:
+				nearest_dist_sq = dist_sq
+				nearest_idx = i
 	
 	return nearest_idx
 
@@ -244,7 +266,7 @@ func _generate_idle_inputs(index: int) -> void:
 	ai_throttle_outputs[index] = 0.6
 	ai_fire_outputs[index] = 0
 
-func apply_ai_to_mass_system(mass_system: MassAircraftSystem) -> void:
+func apply_ai_to_mass_system(mass_system: MassAircraftSystem, delta: float) -> void:
 	# Apply AI outputs to MassAircraftSystem inputs
 	for i in range(mass_system.states.size()):
 		if mass_system.states[i] == 0:
@@ -254,6 +276,23 @@ func apply_ai_to_mass_system(mass_system: MassAircraftSystem) -> void:
 		mass_system.input_rolls[i] = ai_roll_outputs[i]
 		mass_system.throttles[i] = ai_throttle_outputs[i]
 		
-		# Handle firing separately if needed
-		# TODO: Integrate weapon system
+		# Weapon System
+		if weapon_cooldowns[i] > 0.0:
+			weapon_cooldowns[i] -= delta
+
+		if ai_fire_outputs[i] == 1 and weapon_cooldowns[i] <= 0.0:
+			# Fire Weapon
+			var pos = mass_system.positions[i]
+			var rot = mass_system.rotations[i]
+
+			# Create transform for projectile spawn
+			var basis = Basis.from_euler(rot)
+			var spawn_pos = pos - (basis.z * 5.0) # Spawn 5m in front
+			var tf = Transform3D(basis, spawn_pos)
+
+			if FlightManager.instance:
+				FlightManager.instance.spawn_projectile(tf)
+
+			# Reset cooldown (0.1s = 10 rounds/sec)
+			weapon_cooldowns[i] = 0.1
 
