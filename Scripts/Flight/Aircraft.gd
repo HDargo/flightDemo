@@ -174,8 +174,8 @@ func _setup_components() -> void:
 	var AircraftWeaponSystem = load("res://Scripts/Flight/Components/AircraftWeaponSystem.gd")
 	weapon_system = AircraftWeaponSystem.new()
 	# Legacy fallback if resource doesn't have loadout, pass props for legacy init
-	# weapon_system.fire_rate = fire_rate # Removed from WeaponSystem
-	# weapon_system.missile_cooldown = missile_cooldown # Removed from WeaponSystem
+	weapon_system.fire_rate = fire_rate
+	weapon_system.missile_cooldown = missile_cooldown
 	weapon_system.missile_lock_range = missile_lock_range
 	if aircraft_data and not aircraft_data.default_loadout.is_empty():
 		weapon_system.default_weapons = aircraft_data.default_loadout

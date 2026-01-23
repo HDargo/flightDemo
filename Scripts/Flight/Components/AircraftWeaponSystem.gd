@@ -7,6 +7,10 @@ class_name AircraftWeaponSystem
 @export var missile_lock_range: float = 2000.0
 @export var default_weapons: Array[WeaponConfig] = []
 
+# Legacy support properties
+var fire_rate: float = 0.1
+var missile_cooldown: float = 2.0
+
 # Weapon state
 var locked_target: Node3D = null
 var active_weapons: Array[WeaponBase] = []
@@ -88,7 +92,7 @@ func _add_legacy_weapons() -> void:
 	gun_cfg.name = "M61 Vulcan"
 	gun_cfg.type = WeaponConfig.WeaponType.GUN
 	gun_cfg.damage = 10.0
-	gun_cfg.fire_rate = 0.1
+	gun_cfg.fire_rate = fire_rate
 	gun_cfg.projectile_speed = 600.0
 	gun_cfg.muzzle_name_prefix = "gun"
 	add_weapon(gun_cfg)
@@ -98,7 +102,8 @@ func _add_legacy_weapons() -> void:
 	msl_cfg.name = "AIM-9"
 	msl_cfg.type = WeaponConfig.WeaponType.MISSILE
 	msl_cfg.damage = 30.0
-	msl_cfg.fire_rate = 2.0
+	msl_cfg.fire_rate = missile_cooldown
+	msl_cfg.range_val = missile_lock_range
 	msl_cfg.muzzle_name_prefix = "missile"
 	add_weapon(msl_cfg)
 
