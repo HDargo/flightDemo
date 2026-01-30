@@ -121,7 +121,7 @@ func _process_mass_system(delta: float) -> void:
 	var player = get_tree().get_first_node_in_group("player")
 	var cam_pos = player.global_position if is_instance_valid(player) else Vector3.ZERO
 	mass_ai_system.process_ai_batch(delta, mass_aircraft_system, cam_pos)
-	mass_ai_system.apply_ai_to_mass_system(mass_aircraft_system)
+	mass_ai_system.apply_ai_to_mass_system(mass_aircraft_system, delta)
 
 func spawn_mass_aircraft(pos: Vector3, team: int, rot: Vector3 = Vector3.ZERO) -> int: return mass_aircraft_system.spawn_aircraft(pos, team, rot)
 func spawn_formation(center: Vector3, team: int, count: int, spacing: float = 50.0, rot: Vector3 = Vector3.ZERO) -> void:

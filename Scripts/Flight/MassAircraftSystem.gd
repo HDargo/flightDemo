@@ -30,6 +30,7 @@ var input_yaws: PackedFloat32Array = PackedFloat32Array()
 # Sub-Systems
 var _render_system: MassRenderSystem
 var _physics_engine: MassPhysicsEngine
+var spatial_grid: SpatialGrid
 
 # Constants
 const MAX_AIRCRAFT: int = 2000
@@ -61,6 +62,10 @@ func _ready() -> void:
 	_initialize_arrays()
 	
 	# Initialize Sub-systems
+	spatial_grid = SpatialGrid.new()
+	spatial_grid.name = "SpatialGrid"
+	add_child(spatial_grid)
+
 	_render_system = MassRenderSystem.new()
 	_render_system.name = "MassRenderSystem"
 	add_child(_render_system)
@@ -143,6 +148,14 @@ func destroy_aircraft(index: int) -> void:
 		elif team == GlobalEnums.Team.ENEMY:
 			enemy_count -= 1
 
+func damage_aircraft(index: int, amount: float) -> void:
+	if index < 0 or index >= MAX_AIRCRAFT or states[index] == 0:
+		return
+
+	healths[index] -= amount
+	if healths[index] <= 0:
+		destroy_aircraft(index)
+
 func get_aircraft_position(index: int) -> Vector3:
 	if index < 0 or index >= MAX_AIRCRAFT or states[index] == 0:
 		return Vector3.ZERO
@@ -162,5 +175,15 @@ func _physics_process(delta: float) -> void:
 	if _physics_engine:
 		_physics_engine.update_physics(delta)
 	
+	_update_spatial_grid()
+
 	if _render_system:
 		_render_system.update_rendering()
+
+func _update_spatial_grid() -> void:
+	spatial_grid.clear()
+	# Only iterate if we have a reasonable number, or maybe every few frames?
+	# For now, every frame to ensure accurate targeting/collision
+	for i in range(MAX_AIRCRAFT):
+		if states[i] == 1:
+			spatial_grid.insert(i, positions[i])
