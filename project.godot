@@ -8,11 +8,15 @@
 
 config_version=5
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
 config/name="FlightSim"
 run/main_scene="res://Scenes/Levels/MainLevel.tscn"
-config/features=PackedStringArray("4.5", "GL Compatibility")
+config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [display]
@@ -98,6 +102,7 @@ flight_yaw_right={
 [physics]
 
 common/max_physics_steps_per_frame=2
+3d/physics_engine="Jolt Physics"
 
 [rendering]
 

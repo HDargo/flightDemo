@@ -1,15 +1,13 @@
-[gd_scene load_steps=8 format=3 uid="uid://attacker_visual"]
-
-[ext_resource type="Script" path="res://Scripts/Flight/AircraftVisual.gd" id="1_visual"]
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_green"]
-albedo_color = Color(0.2, 0.4, 0.2, 1)
+[gd_scene format=3 uid="uid://7ve002020rsh"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_fuselage"]
 size = Vector3(0.8, 0.8, 4.5)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_green"]
+albedo_color = Color(0.2, 0.4, 0.2, 1)
+
 [sub_resource type="BoxMesh" id="BoxMesh_wing"]
-size = Vector3(4.0, 0.15, 1.5)
+size = Vector3(4, 0.15, 1.5)
 
 [sub_resource type="BoxMesh" id="BoxMesh_control"]
 size = Vector3(1.8, 0.1, 0.5)
@@ -20,77 +18,66 @@ size = Vector3(1.5, 0.1, 0.8)
 [sub_resource type="BoxMesh" id="BoxMesh_tail_v"]
 size = Vector3(0.1, 1.2, 0.8)
 
-[node name="AttackerVisual" type="Node3D" node_paths=PackedStringArray("aileron_left", "aileron_right", "elevator_left", "elevator_right", "rudder", "fuselage_node", "left_wing_node", "right_wing_node", "horizontal_tail_node", "vertical_tail_node")])
-script = ExtResource("1_visual")
-aileron_left = NodePath("Wings/LeftWing/AileronL")
-aileron_right = NodePath("Wings/RightWing/AileronR")
-elevator_left = NodePath("Tail/Horizontal/ElevatorL")
-elevator_right = NodePath("Tail/Horizontal/ElevatorR")
-rudder = NodePath("Tail/Vertical/Rudder")
-fuselage_node = NodePath("Fuselage")
-left_wing_node = NodePath("Wings/LeftWing")
-right_wing_node = NodePath("Wings/RightWing")
-horizontal_tail_node = NodePath("Tail/Horizontal")
-vertical_tail_node = NodePath("Tail/Vertical/FinL")
+[node name="AttackerVisual" type="Node3D" unique_id=1184790822]
 
-[node name="Fuselage" type="MeshInstance3D" parent="."]
+[node name="Fuselage" type="MeshInstance3D" parent="." unique_id=572542543]
 mesh = SubResource("BoxMesh_fuselage")
 surface_material_override/0 = SubResource("StandardMaterial3D_green")
 
-[node name="Cockpit" type="MeshInstance3D" parent="Fuselage"]
+[node name="Cockpit" type="MeshInstance3D" parent="Fuselage" unique_id=1055046877]
 transform = Transform3D(0.5, 0, 0, 0, 0.4, 0, 0, 0, 0.8, 0, 0.5, -1.2)
 mesh = SubResource("BoxMesh_fuselage")
 
-[node name="Wings" type="Node3D" parent="."]
+[node name="Wings" type="Node3D" parent="." unique_id=958017128]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0.2)
 
-[node name="LeftWing" type="MeshInstance3D" parent="Wings"]
+[node name="LeftWing" type="MeshInstance3D" parent="Wings" unique_id=128353759]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4, 0, 0)
 mesh = SubResource("BoxMesh_wing")
 
-[node name="AileronL" type="MeshInstance3D" parent="Wings/LeftWing"]
+[node name="AileronL" type="MeshInstance3D" parent="Wings/LeftWing" unique_id=301081214]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8, 0, 0.7)
 mesh = SubResource("BoxMesh_control")
 
-[node name="RightWing" type="MeshInstance3D" parent="Wings"]
+[node name="RightWing" type="MeshInstance3D" parent="Wings" unique_id=80777979]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4, 0, 0)
 mesh = SubResource("BoxMesh_wing")
 
-[node name="AileronR" type="MeshInstance3D" parent="Wings/RightWing"]
+[node name="AileronR" type="MeshInstance3D" parent="Wings/RightWing" unique_id=1597266835]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0, 0.7)
 mesh = SubResource("BoxMesh_control")
 
-[node name="Tail" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 2.0)
+[node name="Tail" type="Node3D" parent="." unique_id=1709501166]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 2)
 
-[node name="Horizontal" type="Node3D" parent="Tail"]
+[node name="Horizontal" type="Node3D" parent="Tail" unique_id=1336832842]
 
-[node name="Left" type="MeshInstance3D" parent="Tail/Horizontal"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.0, 0, 0)
+[node name="Left" type="MeshInstance3D" parent="Tail/Horizontal" unique_id=208418398]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 0)
 mesh = SubResource("BoxMesh_tail_h")
 
-[node name="ElevatorL" type="MeshInstance3D" parent="Tail/Horizontal/Left"]
+[node name="ElevatorL" type="MeshInstance3D" parent="Tail/Horizontal/Left" unique_id=1578915609]
 transform = Transform3D(0.8, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
 mesh = SubResource("BoxMesh_control")
 
-[node name="Right" type="MeshInstance3D" parent="Tail/Horizontal"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0, 0, 0)
+[node name="Right" type="MeshInstance3D" parent="Tail/Horizontal" unique_id=208166143]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
 mesh = SubResource("BoxMesh_tail_h")
 
-[node name="ElevatorR" type="MeshInstance3D" parent="Tail/Horizontal/Right"]
+[node name="ElevatorR" type="MeshInstance3D" parent="Tail/Horizontal/Right" unique_id=1447291802]
 transform = Transform3D(0.8, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
 mesh = SubResource("BoxMesh_control")
 
-[node name="Vertical" type="Node3D" parent="Tail"]
+[node name="Vertical" type="Node3D" parent="Tail" unique_id=16911163]
 
-[node name="FinL" type="MeshInstance3D" parent="Tail/Vertical"]
+[node name="FinL" type="MeshInstance3D" parent="Tail/Vertical" unique_id=1717359375]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8, 0.5, 0)
 mesh = SubResource("BoxMesh_tail_v")
 
-[node name="FinR" type="MeshInstance3D" parent="Tail/Vertical"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0.5, 0)
-mesh = SubResource("BoxMesh_tail_v")
-
-[node name="Rudder" type="MeshInstance3D" parent="Tail/Vertical/FinL"]
+[node name="Rudder" type="MeshInstance3D" parent="Tail/Vertical/FinL" unique_id=567809972]
 transform = Transform3D(0.05, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0.5)
 mesh = SubResource("BoxMesh_control")
+
+[node name="FinR" type="MeshInstance3D" parent="Tail/Vertical" unique_id=1248997866]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0.5, 0)
+mesh = SubResource("BoxMesh_tail_v")

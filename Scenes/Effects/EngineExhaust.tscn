@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://engine_exhaust"]
+[gd_scene format=3 uid="uid://bgwj8d2t4k83n"]
 
 [sub_resource type="Curve" id="Curve_fire"]
 _data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.2), -2.0, 0.0, 0, 0]
@@ -10,9 +10,9 @@ curve = SubResource("Curve_fire")
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_fire"]
 direction = Vector3(0, 0, 1)
 spread = 2.0
-gravity = Vector3(0, 0, 0)
 initial_velocity_min = 10.0
 initial_velocity_max = 15.0
+gravity = Vector3(0, 0, 0)
 scale_min = 0.5
 scale_max = 1.2
 scale_curve = SubResource("CurveTexture_fire")
@@ -33,14 +33,15 @@ particles_anim_loop = false
 material = SubResource("StandardMaterial3D_fire")
 size = Vector2(0.4, 0.4)
 
-[node name="EngineExhaust" type="GPUParticles3D"]
+[node name="EngineExhaust" type="GPUParticles3D" unique_id=1371744033]
 amount = 40
 lifetime = 0.15
 local_coords = true
 process_material = SubResource("ParticleProcessMaterial_fire")
 draw_pass_1 = SubResource("QuadMesh_fire")
 
-[node name="OmniLight3D" type="OmniLight3D" parent="."]
+[node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=1304022731]
+unique_name_in_owner = true
 light_color = Color(0.3, 0.6, 1, 1)
 light_energy = 2.0
 omni_range = 3.0

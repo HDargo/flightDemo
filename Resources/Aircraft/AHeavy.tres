@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="AircraftResource" load_steps=3 format=3 uid="uid://attacker_aircraft_data"]
+[gd_resource type="Resource" script_class="AircraftResource" format=3 uid="uid://clj0br84rll8n"]
 
-[ext_resource type="PackedScene" uid="uid://attacker_visual" path="res://Scenes/Entities/Visuals/AttackerVisual.tscn" id="1_visual"]
-[ext_resource type="Script" path="res://Scripts/Flight/AircraftResource.gd" id="2_script"]
+[ext_resource type="PackedScene" uid="uid://7ve002020rsh" path="res://Scenes/Entities/Visuals/AttackerVisual.tscn" id="1_visual"]
+[ext_resource type="Script" uid="uid://cag8u6udfmr06" path="res://Scripts/Flight/AircraftResource.gd" id="2_script"]
 
 [resource]
 script = ExtResource("2_script")
@@ -9,7 +9,7 @@ aircraft_name = "A-Heavy"
 visual_scene = ExtResource("1_visual")
 base_color = Color(0.2, 0.3, 0.2, 1)
 max_speed = 45.0
-acceleration = 60.0
+acceleration = 80.0
 turn_speed = 1.5
 pitch_speed = 1.5
 roll_speed = 2.0

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="AircraftResource" load_steps=3 format=3 uid="uid://ciljvjhahi5wy"]
+[gd_resource type="Resource" script_class="AircraftResource" format=3 uid="uid://ciljvjhahi5wy"]
 
 [ext_resource type="PackedScene" path="res://Scenes/Entities/Visuals/TitanVisual.tscn" id="1_visual"]
 [ext_resource type="Script" uid="uid://cag8u6udfmr06" path="res://Scripts/Flight/AircraftResource.gd" id="2_script"]
@@ -9,7 +9,7 @@ aircraft_name = "T-Titan"
 visual_scene = ExtResource("1_visual")
 base_color = Color(0.2, 0.2, 0.3, 1)
 max_speed = 40.0
-acceleration = 50.0
+acceleration = 70.0
 turn_speed = 1.2
 pitch_speed = 1.0
 roll_speed = 1.5
